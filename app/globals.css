@@ -275,8 +275,12 @@ a {
 
 .priority-stats {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 0.5rem;
+}
+
+.priority-stats > div {
+  min-width: 0;
 }
 
 .stat-label {
@@ -287,6 +291,10 @@ a {
 .stat-value {
   font-weight: 700;
   font-size: 0.85rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
 }
 
 .priority-body {
