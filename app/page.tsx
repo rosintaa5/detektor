@@ -13,6 +13,11 @@ interface PumpWarning {
   pair: string;
   moveFromLowPct: number;
   volIdr: number;
+  last: number;
+  entry: number;
+  tp: number;
+  sl: number;
+  rr: number;
   time: number;
   label: string;
   note: string;
@@ -24,6 +29,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<PumpWarning[]>([]);
+  const [nowTs, setNowTs] = useState(() => Date.now());
   const lastWarningStateRef = useRef<Map<string, string>>(new Map());
 
   const formatter = useMemo(
@@ -35,6 +41,26 @@ export default function HomePage() {
   );
 
   const formatPrice = useCallback((value: number) => formatter.format(value), [formatter]);
+
+  const formatRelativeTime = useCallback(
+    (time: number) => {
+      const diff = nowTs - time;
+      if (diff < 0) return 'baru saja';
+
+      const seconds = Math.floor(diff / 1000);
+      if (seconds < 60) return `${seconds}s lalu`;
+
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m lalu`;
+
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}j lalu`;
+
+      const days = Math.floor(hours / 24);
+      return `${days}h lalu`;
+    },
+    [nowTs]
+  );
 
   const buildWarningGuidance = useCallback(
     (coin: CoinSignal) => {
@@ -132,6 +158,11 @@ export default function HomePage() {
               pair: coin.pair,
               moveFromLowPct: coin.moveFromLowPct,
               volIdr: coin.volIdr,
+              last: coin.last,
+              entry: coin.entry,
+              tp: coin.tp,
+              sl: coin.sl,
+              rr: coin.rr,
               time: now,
               label: guidance.label,
               note: guidance.note,
@@ -164,6 +195,12 @@ export default function HomePage() {
 
   useEffect(() => {
     fetchData();
+    const interval = setInterval(() => {
+      fetchData();
+      setNowTs(Date.now());
+    }, 15_000);
+
+    return () => clearInterval(interval);
   }, [fetchData]);
 
   useEffect(() => {
@@ -173,6 +210,11 @@ export default function HomePage() {
       setWarnings((prev) => prev.filter((item) => now - item.time < retentionMs));
     }, 60_000);
 
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => setNowTs(Date.now()), 5_000);
     return () => clearInterval(interval);
   }, []);
 
@@ -229,7 +271,10 @@ export default function HomePage() {
                   {warn.note}
                 </div>
                 <div className="side-list-sub muted">
-                  Naik dari low 24j ~{warn.moveFromLowPct.toFixed(1)}% • Volume {formatter.format(warn.volIdr)} IDR
+                  {formatRelativeTime(warn.time)} • Naik dari low 24j ~{warn.moveFromLowPct.toFixed(1)}% • Volume {formatter.format(warn.volIdr)} IDR
+                </div>
+                <div className="side-list-sub muted">
+                  Harga {formatPrice(warn.last)} | Entry {formatPrice(warn.entry)} | TP {formatPrice(warn.tp)} | SL {formatPrice(warn.sl)} | RR {warn.rr.toFixed(1)}
                 </div>
               </li>
             ))}
