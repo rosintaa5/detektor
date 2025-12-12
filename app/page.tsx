@@ -31,6 +31,7 @@ export default function HomePage() {
   const [warnings, setWarnings] = useState<PumpWarning[]>([]);
   const [nowTs, setNowTs] = useState(() => Date.now());
   const lastWarningStateRef = useRef<Map<string, string>>(new Map());
+  const trackedPairsRef = useRef<Map<string, number>>(new Map());
 
   const formatter = useMemo(
     () =>
@@ -131,25 +132,38 @@ export default function HomePage() {
       }
       const data: ApiResponse = await res.json();
       const incomingCoins = data.coins || [];
+      const coinMap = new Map(incomingCoins.map((c) => [c.pair, c]));
       setCoins(incomingCoins);
 
       const pumpCandidates = incomingCoins.filter((c) => c.pumpStatus === 'mau_pump');
 
       const now = Date.now();
-      const pumpPairs = new Set(pumpCandidates.map((c) => c.pair));
+      pumpCandidates.forEach((coin) => trackedPairsRef.current.set(coin.pair, now));
 
-      lastWarningStateRef.current.forEach((_, pair) => {
-        if (!pumpPairs.has(pair)) {
+      const trackingRetentionMs = 2 * 60 * 60 * 1000;
+      trackedPairsRef.current.forEach((startTime, pair) => {
+        const expired = now - startTime > trackingRetentionMs;
+        const coinStillExists = coinMap.has(pair);
+        if (!coinStillExists || expired) {
+          trackedPairsRef.current.delete(pair);
           lastWarningStateRef.current.delete(pair);
         }
       });
 
+      const radarCoins: CoinSignal[] = [];
+      trackedPairsRef.current.forEach((_, pair) => {
+        const coin = coinMap.get(pair);
+        if (coin) {
+          radarCoins.push(coin);
+        }
+      });
+
       setWarnings((prev) => {
-        const retentionMs = 30 * 60 * 1000;
+        const retentionMs = 2 * 60 * 60 * 1000;
         const stillFresh = prev.filter((item) => now - item.time < retentionMs);
         const updates: PumpWarning[] = [];
 
-        pumpCandidates.forEach((coin) => {
+        radarCoins.forEach((coin) => {
           const guidance = buildWarningGuidance(coin);
           const lastKey = lastWarningStateRef.current.get(coin.pair);
 
