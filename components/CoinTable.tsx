@@ -23,7 +23,7 @@ export default function CoinTable({ coins, selectedPair, onSelectCoin }: Props) 
   if (coins.length === 0) {
     return (
       <p className="muted">
-        Belum ada koin yang memenuhi kriteria STRONG BUY / BUY.
+        Belum ada koin yang memenuhi kriteria mau pump saat ini.
       </p>
     );
   }
