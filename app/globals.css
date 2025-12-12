@@ -283,6 +283,18 @@ a {
   color: #fecaca;
 }
 
+.badge-danger {
+  border-color: rgba(248, 113, 113, 0.95);
+  background: rgba(127, 29, 29, 0.3);
+  color: #fecdd3;
+}
+
+.badge-neutral {
+  border-color: rgba(148, 163, 184, 0.9);
+  background: rgba(148, 163, 184, 0.15);
+  color: #e5e7eb;
+}
+
 .table-section {
   background-color: rgba(15, 23, 42, 0.8);
   border-radius: 0.75rem;
