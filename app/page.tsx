@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CoinTable from '../components/CoinTable';
 import PairChart from '../components/PairChart';
+import TradingViewChart from '../components/TradingViewChart';
 import type { CoinSignal } from '../lib/sintaLogic';
 
 interface ApiResponse {
@@ -753,7 +754,14 @@ export default function HomePage() {
 
   const pumpChartPicks = useMemo(
     () => {
-      const picks = topPicks.slice(0, 2);
+      const prioritized = topPicks.filter((pick) => pumpList.some((p) => p.pair === pick.pair)).slice(0, 2);
+      const fallback = pumpList.slice(0, 2).map((coin) => ({
+        pair: coin.pair,
+        asset: normalizeAssetFromPair(coin.pair),
+        direction: coin.pricePhase === 'baru_mau_naik' ? 'bullish' : 'netral',
+        horizon: '1-3 hari',
+      }));
+      const picks = (prioritized.length ? prioritized : fallback).slice(0, 2);
 
       return picks
         .map((pick) => {
@@ -778,17 +786,30 @@ export default function HomePage() {
                 ? 'Masih di bawah/sekitar entry, peluang akumulasi terbuka.'
                 : 'Di atas entry, lanjutkan hold dengan pengawasan volume.';
 
+          const rangeWidthPct = ((coin.high - coin.low) / coin.last) * 100;
+          const support = formatPrice(coin.low);
+          const resistance = formatPrice(coin.high);
+
+          const detailPoints = [
+            `${biasLabel} sampai ${horizonWindow.untilLabel} · RR ${coin.rr.toFixed(2)} · range ${rangeWidthPct
+              .toFixed(1)}% (vol ${formatPrice(coin.volIdr)} IDR).`,
+            `Harga ${formatPrice(coin.last)} IDR di ${posPct.toFixed(1)}% rentang 24j (${zone}); support ${support}, resist ${resistance}.`,
+            `Momentum dari low ${momentum}% · Entry ${formatPrice(coin.entry)} · TP ${formatPrice(coin.tp)} · SL ${formatPrice(coin.sl)}.`,
+            progression,
+          ];
+
           return {
             coin,
             brief: `${pick.asset} ${biasLabel} sampai ${horizonWindow.untilLabel}: ${momentum}% dari low 24j, ${rrNote}, posisi ${posPct.toFixed(
               1
             )}% (${zone}).`,
             action: `Entry ${formatPrice(coin.entry)} · TP ${formatPrice(coin.tp)} · SL ${formatPrice(coin.sl)} · ${progression}`,
+            detailPoints,
           };
         })
         .filter((item): item is NonNullable<typeof item> => Boolean(item));
     },
-    [coins, describeHorizonWindow, formatPrice, topPicks]
+    [coins, describeHorizonWindow, formatPrice, normalizeAssetFromPair, pumpList, topPicks]
   );
 
   const menuSections = useMemo(
@@ -1130,8 +1151,11 @@ export default function HomePage() {
           <section id="pump-charts" className="section-card accent-chart pump-chart-section">
             <div className="pump-chart-head">
               <div>
-                <h3>Grafik dua top pick dengan analisis lengkap</h3>
-                <p className="muted">Visual + ringkasan aksi untuk dua rekomendasi terakurat yang siap dipegang sampai TP.</p>
+                <h3>Grafik TradingView untuk 2 top pick pump</h3>
+                <p className="muted">
+                  Chart langsung + analisis super lengkap (bias, horizon, support/resist, momentum, aksi) agar eksekusi dua koin
+                  pump teratas lebih pasti.
+                </p>
               </div>
               <span className="badge badge-pump">Live</span>
             </div>
@@ -1147,7 +1171,17 @@ export default function HomePage() {
                       <div className="chart-brief-line">{item.brief}</div>
                       <div className="chart-brief-sub">{item.action}</div>
                     </div>
-                    <PairChart coin={item.coin} />
+
+                    <TradingViewChart pair={item.coin.pair} />
+
+                    <div className="chart-analysis">
+                      <div className="chart-analysis-title">Analisis lengkap</div>
+                      <ul>
+                        {item.detailPoints.map((detail, idx) => (
+                          <li key={idx}>{detail}</li>
+                        ))}
+                      </ul>
+                    </div>
                   </div>
                 ))}
               </div>
