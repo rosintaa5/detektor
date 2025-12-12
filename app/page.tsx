@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import PairChart from '../components/PairChart';
 import CoinTable from '../components/CoinTable';
 import type { CoinSignal } from '../lib/sintaLogic';
@@ -15,7 +15,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -24,29 +24,35 @@ export default function HomePage() {
         throw new Error(`Gagal mengambil data (${res.status})`);
       }
       const data: ApiResponse = await res.json();
-      setCoins(data.coins || []);
-      if (!selected && data.coins && data.coins.length > 0) {
-        setSelected(data.coins[0]);
-      } else if (selected && data.coins) {
-        const updated = data.coins.find((c) => c.pair === selected.pair);
-        setSelected(updated ?? data.coins[0] ?? null);
-      }
+      const incomingCoins = data.coins || [];
+      setCoins(incomingCoins);
+
+      const pumpCandidates = incomingCoins.filter((c) => c.pumpStatus === 'mau_pump');
+
+      setSelected((prev) => {
+        if (!prev && pumpCandidates.length > 0) {
+          return pumpCandidates[0];
+        }
+
+        if (prev) {
+          const updated = pumpCandidates.find((c) => c.pair === prev.pair);
+          return updated ?? pumpCandidates[0] ?? null;
+        }
+
+        return pumpCandidates[0] ?? null;
+      });
     } catch (err: unknown) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'Gagal mengambil data');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
-  const strongAndBuy = coins.filter(
-    (c) => c.signal === 'strong_buy' || c.signal === 'buy'
-  );
-  const watchList = coins.filter((c) => c.signal === 'watch');
   const pumpList = coins.filter((c) => c.pumpStatus === 'mau_pump');
 
   return (
@@ -97,34 +103,7 @@ export default function HomePage() {
 
         <div className="right-panel">
           <section className="side-section">
-            <h3>Koin siap-siap BUY (watchlist)</h3>
-            {watchList.length === 0 ? (
-              <p className="muted">Belum ada koin yang masuk kategori siap-siap BUY.</p>
-            ) : (
-              <ul className="side-list">
-                {watchList.map((c) => (
-                  <li
-                    key={c.pair}
-                    className={`side-list-item ${
-                      selected?.pair === c.pair ? 'active' : ''
-                    }`}
-                    onClick={() => setSelected(c)}
-                  >
-                    <div className="side-list-title">
-                      <span>{c.pair.toUpperCase()}</span>
-                      <span className="badge badge-watch">Siap-siap BUY</span>
-                    </div>
-                    <div className="side-list-sub">
-                      TP ~{c.tpFromEntryPct.toFixed(1)}% · R:R {c.rr.toFixed(2)}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <section className="side-section">
-            <h3>Koin mau pump (momentum)</h3>
+            <h3>Fokus: Koin mau pump (momentum)</h3>
             {pumpList.length === 0 ? (
               <p className="muted">Belum ada koin yang terdeteksi mau pump.</p>
             ) : (
@@ -153,9 +132,9 @@ export default function HomePage() {
       </section>
 
       <section className="table-section">
-        <h2>Daftar koin STRONG BUY & BUY (swing)</h2>
+        <h2>Daftar koin mau pump</h2>
         <CoinTable
-          coins={strongAndBuy}
+          coins={pumpList}
           selectedPair={selected?.pair ?? null}
           onSelectCoin={setSelected}
         />
