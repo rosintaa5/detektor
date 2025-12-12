@@ -19,8 +19,14 @@ export interface CoinSignal extends RawTicker {
   moveFromHighPct: number;
   entry: number;
   tp: number;
+  tp1: number;
+  tp2: number;
+  tp3: number;
   sl: number;
   tpFromEntryPct: number;
+  tp1FromEntryPct: number;
+  tp2FromEntryPct: number;
+  tp3FromEntryPct: number;
   slFromEntryPct: number;
   rr: number;
   signal: Signal;
@@ -36,7 +42,13 @@ const STRONG_VOL_IDR = 100_000_000;
 interface SwingLevels {
   entry: number;
   tp: number;
+  tp1: number;
+  tp2: number;
+  tp3: number;
   sl: number;
+  tp1FromEntryPct: number;
+  tp2FromEntryPct: number;
+  tp3FromEntryPct: number;
   tpFromEntryPct: number;
   slFromEntryPct: number;
   rr: number;
@@ -66,7 +78,6 @@ function computeSwingLevels(last: number, high: number, low: number): SwingLevel
   let tp = entry + rewardAmt;
 
   const riskPct = ((entry - sl) / entry) * 100;
-  let rewardPct = ((tp - entry) / entry) * 100;
 
   const maxRiskPct = 8;
   if (riskPct > maxRiskPct) {
@@ -86,14 +97,24 @@ function computeSwingLevels(last: number, high: number, low: number): SwingLevel
     tp = entry + rewardAmt;
   }
 
-  rewardPct = ((tp - entry) / entry) * 100;
-  const rr = (tp - entry) / finalRisk;
+  const tp1 = entry + finalRisk * 1.5;
+  const tp2 = Math.max(tp, entry + finalRisk * 2);
+  const tp3 = entry + Math.max(finalRisk * 3, (tp2 - entry) * 1.2);
+
+  const rewardPctAdjusted = ((tp2 - entry) / entry) * 100;
+  const rr = (tp2 - entry) / finalRisk;
 
   return {
     entry,
-    tp,
+    tp: tp2,
+    tp1,
+    tp2,
+    tp3,
     sl,
-    tpFromEntryPct: rewardPct,
+    tp1FromEntryPct: ((tp1 - entry) / entry) * 100,
+    tp2FromEntryPct: ((tp2 - entry) / entry) * 100,
+    tp3FromEntryPct: ((tp3 - entry) / entry) * 100,
+    tpFromEntryPct: rewardPctAdjusted,
     slFromEntryPct: ((entry - sl) / entry) * 100,
     rr,
   };
@@ -228,15 +249,16 @@ function buildReasons(coin: CoinSignal): string[] {
 
   const rrText = coin.rr.toFixed(2);
   const tpPctText = coin.tpFromEntryPct.toFixed(1);
+  const tp2PctText = coin.tp2FromEntryPct.toFixed(1);
   const slPctText = coin.slFromEntryPct.toFixed(1);
 
   if (coin.signal === 'strong_buy') {
     reasons.push(
-      `Sinyal STRONG BUY untuk swing: potensi TP sekitar ${tpPctText}% dengan risiko sekitar ${slPctText}% (R:R ≈ ${rrText}).`
+      `Sinyal STRONG BUY untuk swing: potensi TP utama sekitar ${tp2PctText}% dengan risiko sekitar ${slPctText}% (R:R ≈ ${rrText}).`
     );
   } else if (coin.signal === 'buy') {
     reasons.push(
-      `Sinyal BUY untuk swing: potensi TP sekitar ${tpPctText}% dengan risiko sekitar ${slPctText}% (R:R ≈ ${rrText}).`
+      `Sinyal BUY untuk swing: potensi TP utama sekitar ${tpPctText}% dengan risiko sekitar ${slPctText}% (R:R ≈ ${rrText}).`
     );
   } else if (coin.signal === 'watch') {
     reasons.push(
@@ -277,9 +299,9 @@ function buildReasons(coin: CoinSignal): string[] {
     new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(v);
 
   reasons.push(
-    `Level trading yang disarankan: Entry sekitar ${fmt(coin.entry)} IDR, TP di ${fmt(
-      coin.tp
-    )} IDR, dan SL di ${fmt(coin.sl)} IDR.`
+    `Level trading yang disarankan: Entry sekitar ${fmt(coin.entry)} IDR, target berjenjang di ${fmt(
+      coin.tp1
+    )} / ${fmt(coin.tp2)} / ${fmt(coin.tp3)} IDR, dan SL di ${fmt(coin.sl)} IDR.`
   );
 
   return reasons;
@@ -347,8 +369,14 @@ export function buildCoinSignals(rawTickers: RawTicker[]): CoinSignal[] {
       moveFromHighPct,
       entry: Math.round(swing.entry),
       tp: Math.round(swing.tp),
+      tp1: Math.round(swing.tp1),
+      tp2: Math.round(swing.tp2),
+      tp3: Math.round(swing.tp3),
       sl: Math.round(swing.sl),
       tpFromEntryPct: swing.tpFromEntryPct,
+      tp1FromEntryPct: swing.tp1FromEntryPct,
+      tp2FromEntryPct: swing.tp2FromEntryPct,
+      tp3FromEntryPct: swing.tp3FromEntryPct,
       slFromEntryPct: swing.slFromEntryPct,
       rr: swing.rr,
       signal,

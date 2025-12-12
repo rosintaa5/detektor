@@ -25,22 +25,35 @@ export default function PairChart({ coin }: Props) {
             sekarang {formatter.format(last)}
           </p>
         </div>
-        <div className="chart-price-info">
-          <div className="chart-price-line">
-            <span className="label">Last</span>
-            <span>{formatter.format(last)} IDR</span>
-          </div>
-          <div className="chart-price-line">
+        <div className="levels-grid">
+          <div className="level-card">
             <span className="label">Entry</span>
-            <span>{formatter.format(coin.entry)} IDR</span>
+            <strong>{formatter.format(coin.entry)} IDR</strong>
           </div>
-          <div className="chart-price-line">
-            <span className="label">TP</span>
-            <span>{formatter.format(coin.tp)} IDR</span>
-          </div>
-          <div className="chart-price-line">
+          <div className="level-card">
             <span className="label">SL</span>
-            <span>{formatter.format(coin.sl)} IDR</span>
+            <strong className="danger-text">{formatter.format(coin.sl)} IDR</strong>
+            <small>Risk ~{coin.slFromEntryPct.toFixed(1)}%</small>
+          </div>
+          <div className="level-card">
+            <span className="label">TP 1</span>
+            <strong>{formatter.format(coin.tp1)} IDR</strong>
+            <small>+{coin.tp1FromEntryPct.toFixed(1)}%</small>
+          </div>
+          <div className="level-card">
+            <span className="label">TP 2</span>
+            <strong>{formatter.format(coin.tp2)} IDR</strong>
+            <small>+{coin.tp2FromEntryPct.toFixed(1)}%</small>
+          </div>
+          <div className="level-card">
+            <span className="label">TP 3</span>
+            <strong>{formatter.format(coin.tp3)} IDR</strong>
+            <small>+{coin.tp3FromEntryPct.toFixed(1)}%</small>
+          </div>
+          <div className="level-card">
+            <span className="label">Last</span>
+            <strong>{formatter.format(last)} IDR</strong>
+            <small>RR {coin.rr.toFixed(2)}</small>
           </div>
         </div>
       </header>

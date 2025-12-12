@@ -137,6 +137,32 @@ a {
   min-width: 170px;
 }
 
+.levels-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.6rem;
+  width: 100%;
+}
+
+.level-card {
+  background-color: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 0.6rem;
+  padding: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-size: 0.82rem;
+}
+
+.level-card strong {
+  font-size: 0.95rem;
+}
+
+.danger-text {
+  color: #fca5a5;
+}
+
 .chart-price-line {
   display: flex;
   justify-content: space-between;
@@ -251,6 +277,22 @@ a {
   margin-top: 0.2rem;
 }
 
+.levels-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.chip {
+  background-color: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.72rem;
+  color: #e5e7eb;
+}
+
 .badge {
   display: inline-block;
   padding: 0.15rem 0.45rem;
@@ -290,6 +332,49 @@ a {
   border: 1px solid rgba(148, 163, 184, 0.3);
 }
 
+.warning-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px dashed rgba(250, 204, 21, 0.5);
+  border-radius: 0.7rem;
+  background: rgba(250, 204, 21, 0.05);
+  margin-bottom: 0.75rem;
+}
+
+.warning-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.6rem;
+}
+
+.warning-card {
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  background: rgba(248, 113, 113, 0.08);
+  border-radius: 0.6rem;
+  padding: 0.6rem 0.7rem;
+}
+
+.warning-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.warning-note {
+  margin: 0.35rem 0 0.25rem;
+  font-size: 0.85rem;
+}
+
+.warning-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: #e5e7eb;
+}
+
 .table-section h2 {
   margin: 0 0 0.75rem;
   font-size: 1.1rem;
@@ -315,7 +400,7 @@ a {
   padding: 0.4rem 0.5rem;
   text-align: left;
   border-bottom: 1px solid rgba(31, 41, 55, 0.9);
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .coin-table th {
@@ -329,6 +414,22 @@ a {
 
 .row-selected {
   background-color: rgba(34, 197, 94, 0.12);
+}
+
+.compact-cell {
+  white-space: normal;
+}
+
+.stacked {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.stacked small,
+.stacked span {
+  font-size: 0.8rem;
+  line-height: 1.2;
 }
 
 @media (max-width: 900px) {
