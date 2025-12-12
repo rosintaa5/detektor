@@ -655,6 +655,19 @@ a {
   gap: 0.35rem;
 }
 
+.market-brief-divider {
+  border-top: 1px dashed rgba(148, 163, 184, 0.5);
+  margin: 0.25rem 0 0.1rem;
+}
+
+.market-brief-subhead {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #a5b4fc;
+  font-weight: 700;
+}
+
 .market-brief-main {
   font-size: 1rem;
   font-weight: 700;

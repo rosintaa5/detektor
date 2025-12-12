@@ -88,6 +88,29 @@ export default function HomePage() {
 
   const formatPrice = useCallback((value: number) => formatter.format(value), [formatter]);
 
+  const describeHorizonWindow = useCallback(
+    (horizon: string) => {
+      const matches = [...horizon.matchAll(/(\d+)\s*(hari|minggu)/gi)];
+
+      let maxDays = 3;
+      matches.forEach(([, num, unit]) => {
+        const days = Number.parseInt(num, 10) * (unit.toLowerCase().startsWith('minggu') ? 7 : 1);
+        if (!Number.isNaN(days) && days > maxDays) {
+          maxDays = days;
+        }
+      });
+
+      const until = new Date(nowTs + maxDays * 24 * 60 * 60 * 1000);
+      const untilLabel = new Intl.DateTimeFormat('id-ID', {
+        day: 'numeric',
+        month: 'short',
+      }).format(until);
+
+      return { maxDays, untilLabel: `sampai ${untilLabel}` };
+    },
+    [nowTs]
+  );
+
   const formatRelativeTime = useCallback(
     (time: number) => {
       const diff = nowTs - time;
@@ -596,11 +619,16 @@ export default function HomePage() {
   }, [formatPrice, pumpList, selected]);
 
   const btcMarketSummary = useMemo(() => {
-    const btc = coins.find((c) => c.pair.toLowerCase().includes('btc'));
+    const btc =
+      coins.find((c) => {
+        const pair = c.pair.toLowerCase();
+        return pair.includes('btc_usd') || pair.includes('btc-usd') || pair.includes('btc_usdt');
+      }) ?? coins.find((c) => c.pair.toLowerCase().includes('btc'));
     const btcPrediction = predictions.find((p) => p.asset.toUpperCase() === 'BTC');
 
     const bias = btcPrediction?.direction ?? (btc?.pricePhase === 'baru_mau_naik' ? 'bullish' : 'bearish');
     const horizon = btcPrediction?.horizon ?? '1-3 hari';
+    const horizonWindow = describeHorizonWindow(horizon);
 
     const supportRaw = btc ? Math.min(btc.sl, btc.entry * 0.98, btc.low) : null;
     const resistanceRaw = btc ? Math.max(btc.tp, btc.high, btc.entry * 1.03) : null;
@@ -615,7 +643,7 @@ export default function HomePage() {
       const resistance = formatPrice(resistanceRaw);
       const biasLabel = bias === 'bullish' ? 'Bull' : bias === 'bearish' ? 'Bear' : 'Netral';
 
-      line = `${biasLabel} ${horizon}; support ${support}, resist ${resistance}.`;
+      line = `${biasLabel} ${horizon} (${horizonWindow.untilLabel}); support ${support}, resist ${resistance}.`;
 
       const nearSupport = last <= supportRaw * 1.01;
       const nearResistance = last >= resistanceRaw * 0.99;
@@ -643,7 +671,29 @@ export default function HomePage() {
     }
 
     return { line, caution, action };
-  }, [coins, formatPrice, predictions]);
+  }, [coins, describeHorizonWindow, formatPrice, predictions]);
+
+  const bestTodaySummary = useMemo(() => {
+    if (topPicks.length === 0) {
+      return {
+        headline: 'Belum ada koin paling akurat untuk dieksekusi hari ini.',
+        action: 'Tunggu rekomendasi baru dengan skor tinggi sebelum masuk.',
+      };
+    }
+
+    const leader = topPicks[0];
+    const horizonWindow = describeHorizonWindow(leader.horizon);
+    const dirLabel = leader.direction === 'bullish' ? 'Bull' : leader.direction === 'bearish' ? 'Bear' : 'Netral';
+
+    return {
+      headline: `${leader.asset} ${dirLabel} ${leader.confidence}% (${leader.horizon}, ${horizonWindow.untilLabel}). Entry ${formatPrice(
+        leader.entry
+      )}, TP ${formatPrice(leader.tp)}, SL ${formatPrice(leader.sl)}.`,
+      action: `Eksekusi ${leader.asset} hari ini, tahan sampai ${horizonWindow.untilLabel} atau TP ${formatPrice(
+        leader.tp
+      )}; hindari kejar harga di atas ${formatPrice(leader.entry * 1.04)}.`,
+    };
+  }, [describeHorizonWindow, formatPrice, topPicks]);
 
   const menuSections = useMemo(
     () => [
@@ -714,6 +764,10 @@ export default function HomePage() {
           <div className="market-brief-main">{btcMarketSummary.line}</div>
           <div className="market-brief-hint">{btcMarketSummary.caution}</div>
           <div className="market-brief-action">{btcMarketSummary.action}</div>
+          <div className="market-brief-divider" />
+          <div className="market-brief-subhead">Top pick eksekusi hari ini</div>
+          <div className="market-brief-main">{bestTodaySummary.headline}</div>
+          <div className="market-brief-action">{bestTodaySummary.action}</div>
         </div>
       </section>
 
