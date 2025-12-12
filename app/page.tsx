@@ -595,6 +595,56 @@ export default function HomePage() {
     };
   }, [formatPrice, pumpList, selected]);
 
+  const btcMarketSummary = useMemo(() => {
+    const btc = coins.find((c) => c.pair.toLowerCase().includes('btc'));
+    const btcPrediction = predictions.find((p) => p.asset.toUpperCase() === 'BTC');
+
+    const bias = btcPrediction?.direction ?? (btc?.pricePhase === 'baru_mau_naik' ? 'bullish' : 'bearish');
+    const horizon = btcPrediction?.horizon ?? '1-3 hari';
+
+    const supportRaw = btc ? Math.min(btc.sl, btc.entry * 0.98, btc.low) : null;
+    const resistanceRaw = btc ? Math.max(btc.tp, btc.high, btc.entry * 1.03) : null;
+    const last = btc?.last ?? null;
+
+    let line = 'Belum ada data BTC terkini.';
+    let caution = 'Tunggu data harga untuk menentukan level kunci.';
+    let action = 'Pantau BTC lebih dulu sebelum eksekusi aset lain.';
+
+    if (supportRaw && resistanceRaw && last) {
+      const support = formatPrice(supportRaw);
+      const resistance = formatPrice(resistanceRaw);
+      const biasLabel = bias === 'bullish' ? 'Bull' : bias === 'bearish' ? 'Bear' : 'Netral';
+
+      line = `${biasLabel} ${horizon}; support ${support}, resist ${resistance}.`;
+
+      const nearSupport = last <= supportRaw * 1.01;
+      const nearResistance = last >= resistanceRaw * 0.99;
+      const breakout = last > resistanceRaw * 1.01;
+      const breakdown = last < supportRaw * 0.99;
+
+      if (breakout) {
+        caution = `Harga sudah melewati resist ${resistance}, peluang lanjut ${bias === 'bearish' ? 'netral/bull' : 'bull'} selama volume kuat.`;
+      } else if (breakdown) {
+        caution = `Turun di bawah support ${support}; hati-hati kelanjutan bear hingga ada reclaim.`;
+      } else if (nearResistance) {
+        caution = `Mepet resist ${resistance}; hindari entry FOMO, siapkan take profit defensif.`;
+      } else if (nearSupport) {
+        caution = `Menempel support ${support}; waspadai pantulan lemah atau potensi tembus.`;
+      } else {
+        caution = `Masih di range ${support} - ${resistance}; tunggu tembus area sebelum agresif.`;
+      }
+
+      action =
+        bias === 'bullish'
+          ? `Fokus buy the dip dekat ${support} dan tahan sampai konfirmasi tembus ${resistance}.`
+          : bias === 'bearish'
+            ? `Prioritaskan proteksi; kalau gagal reclaim ${support}, siapkan CL cepat dan hindari entry baru.`
+            : `Netral; tunggu arah jelas di atas ${resistance} untuk bull atau di bawah ${support} untuk bear.`;
+    }
+
+    return { line, caution, action };
+  }, [coins, formatPrice, predictions]);
+
   const menuSections = useMemo(
     () => [
       {
@@ -642,9 +692,6 @@ export default function HomePage() {
       <header className="page-header">
         <div>
           <h1>SINTA Crypto Detector</h1>
-          <p className="subtitle">
-            Detektor pump, prediksi mingguan, dan aksi cepat berbasis berita & momentum nyata.
-          </p>
         </div>
         <div className="header-actions">
           <button
@@ -657,6 +704,18 @@ export default function HomePage() {
           </button>
         </div>
       </header>
+
+      <section className="market-brief section-card accent-market">
+        <div className="market-brief-head">
+          <div className="market-brief-label">Ringkasan BTC/USD</div>
+          <div className="market-brief-pill">Kesimpulan gabungan</div>
+        </div>
+        <div className="market-brief-body">
+          <div className="market-brief-main">{btcMarketSummary.line}</div>
+          <div className="market-brief-hint">{btcMarketSummary.caution}</div>
+          <div className="market-brief-action">{btcMarketSummary.action}</div>
+        </div>
+      </section>
 
       {error && <div className="error-box">Error: {error}</div>}
 

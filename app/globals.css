@@ -623,6 +623,61 @@ a {
   gap: 1.25rem;
 }
 
+.market-brief {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.market-brief-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+  color: #d1d5db;
+}
+
+.market-brief-label {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.market-brief-pill {
+  padding: 0.35rem 0.75rem;
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.market-brief-body {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.market-brief-main {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.market-brief-hint {
+  font-size: 0.9rem;
+  color: #e2e8f0;
+}
+
+.market-brief-action {
+  font-size: 0.9rem;
+  color: #c7d2fe;
+  font-weight: 600;
+}
+
+.accent-market {
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(8, 47, 73, 0.45));
+  box-shadow: 0 12px 35px rgba(30, 64, 175, 0.15);
+}
+
 .table-section h2 {
   margin: 0 0 0.75rem;
   font-size: 1.1rem;
