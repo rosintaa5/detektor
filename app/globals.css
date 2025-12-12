@@ -701,6 +701,61 @@ a {
   box-shadow: 0 12px 35px rgba(30, 64, 175, 0.15);
 }
 
+.accent-chart {
+  border: 1px solid rgba(34, 211, 238, 0.18);
+  background: linear-gradient(135deg, rgba(8, 47, 73, 0.4), rgba(34, 211, 238, 0.05));
+  box-shadow: 0 10px 30px rgba(8, 47, 73, 0.15);
+}
+
+.pump-chart-section {
+  margin-top: 1rem;
+}
+
+.pump-chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.pump-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.pump-chart-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 12px;
+  padding: 0.75rem;
+}
+
+.chart-brief {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.chart-brief-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #c7d2fe;
+}
+
+.chart-brief-line {
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.chart-brief-sub {
+  color: #a5b4fc;
+  font-size: 0.9rem;
+}
+
 .table-section h2 {
   margin: 0 0 0.75rem;
   font-size: 1.1rem;

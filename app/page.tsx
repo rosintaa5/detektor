@@ -629,60 +629,86 @@ export default function HomePage() {
     };
   }, [formatPrice, pumpList, selected]);
 
+  const usdtIdrRate = useMemo(() => {
+    const usdtPair = coins.find((c) => {
+      const pair = c.pair.toLowerCase();
+      return pair === 'usdt_idr' || pair === 'usdtidr' || pair.includes('usdt_idr');
+    });
+    return usdtPair?.last ?? null;
+  }, [coins]);
+
   const btcMarketSummary = useMemo(() => {
-    const btc =
+    const btcUsdt =
       coins.find((c) => {
         const pair = c.pair.toLowerCase();
-        return pair.includes('btc_usd') || pair.includes('btc-usd') || pair.includes('btc_usdt');
-      }) ?? coins.find((c) => c.pair.toLowerCase().includes('btc'));
+        return pair.includes('btc_usdt') || pair.includes('btc-usdt') || pair.includes('btc_usd');
+      }) ?? null;
+    const btcIdr =
+      coins.find((c) => {
+        const pair = c.pair.toLowerCase();
+        return pair.includes('btc_idr') || pair.includes('btc-idr');
+      }) ?? coins.find((c) => c.pair.toLowerCase().startsWith('btc'));
+
+    const btc = btcUsdt ?? btcIdr ?? null;
     const btcPrediction = predictions.find((p) => p.asset.toUpperCase() === 'BTC');
 
     const bias = btcPrediction?.direction ?? (btc?.pricePhase === 'baru_mau_naik' ? 'bullish' : 'bearish');
     const horizon = btcPrediction?.horizon ?? '1-3 hari';
     const horizonWindow = describeHorizonWindow(horizon);
 
+    const toUsd = (value: number | null | undefined) => {
+      if (!Number.isFinite(value ?? NaN)) return null;
+      if (btcUsdt) return value ?? null;
+      if (!usdtIdrRate || usdtIdrRate <= 0) return null;
+      return (value ?? 0) / usdtIdrRate;
+    };
+
     const supportRaw = btc ? Math.min(btc.sl, btc.entry * 0.98, btc.low) : null;
     const resistanceRaw = btc ? Math.max(btc.tp, btc.high, btc.entry * 1.03) : null;
-    const last = btc?.last ?? null;
+    const lastRaw = btc?.last ?? null;
+
+    const support = toUsd(supportRaw);
+    const resistance = toUsd(resistanceRaw);
+    const last = toUsd(lastRaw);
 
     let line = 'Belum ada data BTC terkini.';
     let caution = 'Tunggu data harga untuk menentukan level kunci.';
     let action = 'Pantau BTC lebih dulu sebelum eksekusi aset lain.';
 
-    if (supportRaw && resistanceRaw && last) {
-      const support = formatUsd(supportRaw);
-      const resistance = formatUsd(resistanceRaw);
+    if (support && resistance && last) {
+      const supportLabel = formatUsd(support);
+      const resistanceLabel = formatUsd(resistance);
       const biasLabel = bias === 'bullish' ? 'Bull' : bias === 'bearish' ? 'Bear' : 'Netral';
 
-      line = `${biasLabel} ${horizon} (${horizonWindow.untilLabel}); support ${support}, resist ${resistance}.`;
+      line = `${biasLabel} ${horizon} (${horizonWindow.untilLabel}); support ${supportLabel}, resist ${resistanceLabel}.`;
 
-      const nearSupport = last <= supportRaw * 1.01;
-      const nearResistance = last >= resistanceRaw * 0.99;
-      const breakout = last > resistanceRaw * 1.01;
-      const breakdown = last < supportRaw * 0.99;
+      const nearSupport = last <= support * 1.01;
+      const nearResistance = last >= resistance * 0.99;
+      const breakout = last > resistance * 1.01;
+      const breakdown = last < support * 0.99;
 
       if (breakout) {
-        caution = `Harga sudah melewati resist ${resistance}, peluang lanjut ${bias === 'bearish' ? 'netral/bull' : 'bull'} selama volume kuat.`;
+        caution = `Harga sudah melewati resist ${resistanceLabel}, peluang lanjut ${bias === 'bearish' ? 'netral/bull' : 'bull'} selama volume kuat.`;
       } else if (breakdown) {
-        caution = `Turun di bawah support ${support}; hati-hati kelanjutan bear hingga ada reclaim.`;
+        caution = `Turun di bawah support ${supportLabel}; hati-hati kelanjutan bear hingga ada reclaim.`;
       } else if (nearResistance) {
-        caution = `Mepet resist ${resistance}; hindari entry FOMO, siapkan take profit defensif.`;
+        caution = `Mepet resist ${resistanceLabel}; hindari entry FOMO, siapkan take profit defensif.`;
       } else if (nearSupport) {
-        caution = `Menempel support ${support}; waspadai pantulan lemah atau potensi tembus.`;
+        caution = `Menempel support ${supportLabel}; waspadai pantulan lemah atau potensi tembus.`;
       } else {
-        caution = `Masih di range ${support} - ${resistance}; tunggu tembus area sebelum agresif.`;
+        caution = `Masih di range ${supportLabel} - ${resistanceLabel}; tunggu tembus area sebelum agresif.`;
       }
 
       action =
         bias === 'bullish'
-          ? `Fokus buy the dip dekat ${support} dan tahan sampai konfirmasi tembus ${resistance}.`
+          ? `Fokus buy the dip dekat ${supportLabel} dan tahan sampai konfirmasi tembus ${resistanceLabel}.`
           : bias === 'bearish'
-            ? `Prioritaskan proteksi; kalau gagal reclaim ${support}, siapkan CL cepat dan hindari entry baru.`
-            : `Netral; tunggu arah jelas di atas ${resistance} untuk bull atau di bawah ${support} untuk bear.`;
+            ? `Prioritaskan proteksi; kalau gagal reclaim ${supportLabel}, siapkan CL cepat dan hindari entry baru.`
+            : `Netral; tunggu arah jelas di atas ${resistanceLabel} untuk bull atau di bawah ${supportLabel} untuk bear.`;
     }
 
     return { line, caution, action };
-  }, [coins, describeHorizonWindow, formatUsd, predictions]);
+  }, [coins, describeHorizonWindow, formatUsd, predictions, usdtIdrRate]);
 
   const bestTodaySummary = useMemo(() => {
     if (topPicks.length === 0) {
@@ -742,6 +768,26 @@ export default function HomePage() {
       action: 'Prioritaskan dua koin pump ini lebih dulu sebelum masuk pasangan lain.',
     };
   }, [describeHorizonWindow, formatPrice, normalizeAssetFromPair, pumpList, topPicks]);
+
+  const pumpChartPicks = useMemo(
+    () => {
+      const picks = pumpList.slice(0, 2);
+      return picks.map((coin) => {
+        const posPct = Math.max(0, Math.min(100, coin.posInRange * 100));
+        const momentum = coin.moveFromLowPct.toFixed(1);
+        const rrNote = coin.rr >= 2 ? 'RR bagus' : coin.rr >= 1.6 ? 'RR cukup' : 'RR terbatas';
+        const zone =
+          posPct >= 75 ? 'dekat high harian (awas overheat)' : posPct <= 40 ? 'masih dekat low (siap akumulasi)' : 'zona tengah';
+
+        return {
+          coin,
+          brief: `${coin.pair.toUpperCase()} ${momentum}% dari low 24j, ${rrNote}, posisi ${posPct.toFixed(1)}% (${zone}).`,
+          action: `Entry ${formatPrice(coin.entry)} · TP ${formatPrice(coin.tp)} · SL ${formatPrice(coin.sl)}.`,
+        };
+      });
+    },
+    [formatPrice, pumpList]
+  );
 
   const menuSections = useMemo(
     () => [
@@ -1077,6 +1123,33 @@ export default function HomePage() {
               selectedPair={selected?.pair ?? null}
               onSelectCoin={setSelected}
             />
+          </section>
+
+          <section id="pump-charts" className="section-card accent-chart pump-chart-section">
+            <div className="pump-chart-head">
+              <div>
+                <h3>Grafik dua koin pump teratas</h3>
+                <p className="muted">Ringkasan cepat dan visual posisi harga untuk dua kandidat pump paling update.</p>
+              </div>
+              <span className="badge badge-pump">Live</span>
+            </div>
+
+            {pumpChartPicks.length === 0 ? (
+              <div className="empty-state small">Belum ada koin pump untuk dianalisis grafiknya.</div>
+            ) : (
+              <div className="pump-chart-grid">
+                {pumpChartPicks.map((item) => (
+                  <div key={item.coin.pair} className="pump-chart-card">
+                    <div className="chart-brief">
+                      <div className="chart-brief-title">{item.coin.pair.toUpperCase()}</div>
+                      <div className="chart-brief-line">{item.brief}</div>
+                      <div className="chart-brief-sub">{item.action}</div>
+                    </div>
+                    <PairChart coin={item.coin} />
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
           </div>
         </div>
