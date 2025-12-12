@@ -49,6 +49,22 @@ interface PumpWarning {
   note: string;
 }
 
+interface TopPick {
+  pair: string;
+  asset: string;
+  score: number;
+  entry: number;
+  tp: number;
+  sl: number;
+  rr: number;
+  last: number;
+  direction: PredictionDirection;
+  confidence: number;
+  rationale: string;
+  suggestedAction: string;
+  horizon: string;
+}
+
 export default function HomePage() {
   const [coins, setCoins] = useState<CoinSignal[]>([]);
   const [selected, setSelected] = useState<CoinSignal | null>(null);
@@ -407,6 +423,62 @@ export default function HomePage() {
     }));
   };
 
+  const predictionMap = useMemo(() => {
+    const map = new Map<string, Prediction>();
+    predictions.forEach((p) => map.set(p.asset.toUpperCase(), p));
+    return map;
+  }, [predictions]);
+
+  const topPicks: TopPick[] = useMemo(() => {
+    if (!coins.length) return [];
+
+    const candidates: TopPick[] = coins
+      .filter((coin) => coin.pumpStatus === 'mau_pump' || coin.rr >= 1.4)
+      .map((coin) => {
+        const asset = normalizeAssetFromPair(coin.pair);
+        const pred = predictionMap.get(asset);
+
+        const directionScore = pred
+          ? pred.direction === 'bullish'
+            ? 25
+            : pred.direction === 'netral'
+              ? 8
+              : -50
+          : 0;
+
+        const momentumScore = Math.min(20, coin.moveFromLowPct / 2);
+        const rrScore = Math.max(0, Math.min(25, (coin.rr - 1) * 10));
+        const pumpScore = coin.pumpStatus === 'mau_pump' ? 20 : 0;
+        const baseConfidence = pred?.confidence ?? 45;
+        const score = baseConfidence + directionScore + momentumScore + rrScore + pumpScore;
+
+        return {
+          pair: coin.pair,
+          asset,
+          score,
+          entry: coin.entry,
+          tp: coin.tp,
+          sl: coin.sl,
+          rr: coin.rr,
+          last: coin.last,
+          direction: pred?.direction ?? 'bullish',
+          confidence: pred?.confidence ?? 50,
+          rationale:
+            pred?.rationale ||
+            `RR ${coin.rr.toFixed(1)} dan momentum ${coin.moveFromLowPct.toFixed(1)}% dari low 24j.`,
+          suggestedAction:
+            pred?.suggestedAction ||
+            'Entry bertahap, hold sampai TP bertingkat. Jangan lupa disiplin SL.',
+          horizon: pred?.horizon ?? 'Sampai TP (1-3 hari)',
+        };
+      })
+      .filter((item) => item.score > 40)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 6);
+
+    return candidates;
+  }, [coins, normalizeAssetFromPair, predictionMap]);
+
   const pumpList = coins.filter((c) => c.pumpStatus === 'mau_pump');
 
   return (
@@ -431,6 +503,67 @@ export default function HomePage() {
       </header>
 
       {error && <div className="error-box">Error: {error}</div>}
+
+      <section className="priority-section">
+        <div className="priority-header">
+          <div>
+            <h2>Prioritas Buy & Hold sampai TP</h2>
+            <p className="muted">
+              Menggabungkan sinyal mau pump + prediksi mingguan + RR untuk menyorot koin paling akurat dipegang hingga TP.
+            </p>
+          </div>
+          <span className="badge badge-strong">Live terhubung prediksi & sinyal</span>
+        </div>
+
+        {topPicks.length === 0 ? (
+          <div className="empty-state small">Menunggu sinyal & prediksi menyatu. Segera muncul begitu data siap.</div>
+        ) : (
+          <div className="priority-grid">
+            {topPicks.map((pick) => (
+              <div key={pick.pair} className="priority-card">
+                <div className="priority-card-head">
+                  <div>
+                    <div className="priority-asset">{pick.asset}</div>
+                    <div className="priority-pair">{pick.pair.toUpperCase()}</div>
+                  </div>
+                  <div className="priority-badges">
+                    <span className="badge badge-pump">{pick.direction.toUpperCase()}</span>
+                    <span className="badge badge-buy">Conf {pick.confidence}%</span>
+                    <span className="badge badge-strong">Score {Math.round(pick.score)}</span>
+                  </div>
+                </div>
+
+                <div className="priority-stats">
+                  <div>
+                    <div className="stat-label">Entry</div>
+                    <div className="stat-value">{formatPrice(pick.entry)}</div>
+                  </div>
+                  <div>
+                    <div className="stat-label">Last</div>
+                    <div className="stat-value">{formatPrice(pick.last)}</div>
+                  </div>
+                  <div>
+                    <div className="stat-label">TP</div>
+                    <div className="stat-value">{formatPrice(pick.tp)}</div>
+                  </div>
+                  <div>
+                    <div className="stat-label">SL</div>
+                    <div className="stat-value">{formatPrice(pick.sl)}</div>
+                  </div>
+                  <div>
+                    <div className="stat-label">RR</div>
+                    <div className="stat-value">{pick.rr.toFixed(1)}</div>
+                  </div>
+                </div>
+
+                <div className="priority-body">{pick.rationale}</div>
+                <div className="priority-action">{pick.suggestedAction}</div>
+                <div className="priority-footer">Horizon: {pick.horizon}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section className="side-section">
         <h3>Radar Peringatan Pump</h3>
