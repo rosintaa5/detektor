@@ -75,6 +75,7 @@ export default function HomePage() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [newsError, setNewsError] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const lastWarningStateRef = useRef<Map<string, string>>(new Map());
   const trackedPairsRef = useRef<Map<string, number>>(new Map());
 
@@ -481,46 +482,154 @@ export default function HomePage() {
 
   const pumpList = coins.filter((c) => c.pumpStatus === 'mau_pump');
 
+  const topPickInsight = useMemo(() => {
+    if (topPicks.length === 0) {
+      return {
+        summary: 'Menunggu sinyal gabungan paling akurat muncul.',
+        action: 'Tahan entry besar, siapkan dana untuk kandidat skor tinggi berikutnya.',
+      };
+    }
+
+    const leader = topPicks[0];
+    return {
+      summary: `${leader.asset} teratas dengan skor ${Math.round(leader.score)} (${leader.direction}).`,
+      action: `Masuk bertahap di ${formatPrice(leader.entry)}, tahan sampai TP ${formatPrice(
+        leader.tp
+      )} (SL ${formatPrice(leader.sl)}).`,
+    };
+  }, [formatPrice, topPicks]);
+
+  const radarInsight = useMemo(() => {
+    if (warnings.length === 0) {
+      return {
+        summary: 'Belum ada peringatan aktif, radar standby.',
+        action: 'Pantau trigger baru sebelum eksekusi entry.',
+      };
+    }
+
+    const latest = warnings[0];
+    return {
+      summary: `${warnings.length} koin diawasi; terakhir ${latest.pair.toUpperCase()} (${latest.label}).`,
+      action: `${latest.label}: ${latest.note}`,
+    };
+  }, [warnings]);
+
+  const newsInsight = useMemo(() => {
+    if (news.length === 0) {
+      return {
+        summary: 'Belum ada berita yang mencolok.',
+        action: 'Tunggu kabar kuat untuk cari harga rendah.',
+      };
+    }
+
+    const sentimentCount = news.reduce(
+      (acc, item) => {
+        acc[item.sentiment] += 1;
+        item.assets.forEach((asset) => {
+          const key = asset.toUpperCase();
+          acc.assets.set(key, (acc.assets.get(key) ?? 0) + 1);
+        });
+        return acc;
+      },
+      { bullish: 0, bearish: 0, neutral: 0, assets: new Map<string, number>() }
+    );
+
+    const topAsset = Array.from(sentimentCount.assets.entries()).sort((a, b) => b[1] - a[1])[0]?.[0];
+
+    const summaryParts = [
+      `${sentimentCount.bullish} bullish`,
+      `${sentimentCount.bearish} bearish`,
+      `${sentimentCount.neutral} netral`,
+    ];
+
+    const dominant =
+      sentimentCount.bullish > sentimentCount.bearish
+        ? 'bullish'
+        : sentimentCount.bearish > sentimentCount.bullish
+          ? 'bearish'
+          : 'netral';
+
+    const summary = `Sentimen ${summaryParts.join(' / ')}; ${topAsset ? `${topAsset} paling sering disebut.` : 'pantau aset terkait.'}`;
+    const action =
+      dominant === 'bullish'
+        ? `Incar harga rendah di ${topAsset ?? 'aset terkait'} sebelum momentum lanjut.`
+        : dominant === 'bearish'
+          ? `Kurangi eksposur ${topAsset ?? 'aset rentan'}, tunggu konfirmasi balik bullish.`
+          : 'Prioritaskan aset dengan katalis jelas; hindari entry tanpa trigger.';
+
+    return { summary, action };
+  }, [news]);
+
+  const predictionInsight = useMemo(() => {
+    if (predictions.length === 0) {
+      return {
+        summary: 'Prediksi mingguan belum tersedia.',
+        action: 'Tunggu aset dengan confidence tinggi sebelum entry swing.',
+      };
+    }
+
+    const strongest = [...predictions].sort((a, b) => b.confidence - a.confidence)[0];
+    return {
+      summary: `${strongest.asset} confidence ${strongest.confidence}% (${strongest.direction}).`,
+      action: strongest.suggestedAction,
+    };
+  }, [predictions]);
+
+  const pumpInsight = useMemo(() => {
+    if (pumpList.length === 0) {
+      return {
+        summary: 'Belum ada kandidat mau pump aktif.',
+        action: 'Tunggu sinyal hijau berikutnya sebelum entry.',
+      };
+    }
+
+    const focus = selected ?? pumpList[0];
+    return {
+      summary: `${pumpList.length} koin mau pump; fokus ${focus.pair.toUpperCase()}.`,
+      action: `Buka detail ${focus.pair.toUpperCase()} dan ikuti TP 1/2/3 dengan disiplin SL ${formatPrice(focus.sl)}.`,
+    };
+  }, [formatPrice, pumpList, selected]);
+
   const menuSections = useMemo(
     () => [
       {
         id: 'priority',
         title: 'Prioritas Buy & Hold',
-        summary: 'Koin paling akurat untuk dipegang hingga TP berdasarkan sinyal & prediksi.',
-        action: 'Baca entry/TP/SL/RR, lalu eksekusi sesuai saran aksi.',
+        summary: topPickInsight.summary,
+        action: topPickInsight.action,
       },
       {
         id: 'radar',
         title: 'Radar Peringatan Pump',
-        summary: 'Feed live koin yang baru atau pernah mau pump beserta panduan langkah.',
-        action: 'Ikuti label TP/CL/tahan entry agar tidak ketinggalan momentum.',
+        summary: radarInsight.summary,
+        action: radarInsight.action,
       },
       {
         id: 'news',
         title: 'Berita & Sentimen',
-        summary: 'Kabar terbaru dengan sentimen dan dampak untuk aset terkait.',
-        action: 'Soroti aset dengan sentimen tinggi untuk peluang atau mitigasi risiko.',
+        summary: newsInsight.summary,
+        action: newsInsight.action,
       },
       {
         id: 'predictions',
         title: 'Prediksi 1 Minggu',
-        summary: 'Arah, kepercayaan, dan horizon aksi untuk aset teratas.',
-        action: 'Pilih aset dengan confidence tinggi dan arah bullish untuk rencana entry.',
+        summary: predictionInsight.summary,
+        action: predictionInsight.action,
       },
       {
         id: 'pump-list',
         title: 'Daftar Mau Pump',
-        summary: 'Kandidat pump terbaru beserta kenaikan dari low 24j.',
-        action: 'Klik koin untuk membuka chart, alasan, dan target TP 1/2/3.',
+        summary: pumpInsight.summary,
+        action: pumpInsight.action,
       },
       {
         id: 'table',
         title: 'Tabel Detail',
-        summary: 'Tabel lengkap koin mau pump untuk membandingkan cepat.',
-        action: 'Gunakan sorting & klik baris untuk fokus pada koin pilihan.',
+        summary: pumpInsight.summary,
+        action: pumpInsight.action,
       },
     ],
-    []
+    [newsInsight, predictionInsight, pumpInsight, radarInsight, topPickInsight]
   );
 
   return (
@@ -546,24 +655,35 @@ export default function HomePage() {
 
       {error && <div className="error-box">Error: {error}</div>}
 
-      <div className="layout-with-sidebar">
-        <aside className="sidebar-menu">
-          <h3>Menu Navigasi</h3>
-          <ul>
-            {menuSections.map((section) => (
-              <li key={section.id} className="sidebar-menu-item">
-                <a href={`#${section.id}`} className="sidebar-menu-link">
-                  <div className="sidebar-menu-title">{section.title}</div>
-                  <div className="sidebar-menu-summary">{section.summary}</div>
-                  <div className="sidebar-menu-action">Saran: {section.action}</div>
-                </a>
-              </li>
-            ))}
-          </ul>
-        </aside>
+      <div className="layout-shell">
+        <button
+          type="button"
+          className={`sidebar-toggle ${sidebarOpen ? 'open' : 'collapsed'}`}
+          onClick={() => setSidebarOpen((prev) => !prev)}
+          aria-label={sidebarOpen ? 'Sembunyikan menu' : 'Tampilkan menu'}
+          title={sidebarOpen ? 'Sembunyikan menu' : 'Tampilkan menu'}
+        >
+          ⋮
+        </button>
 
-        <div className="content-with-sidebar">
-          <section id="priority" className="priority-section">
+        <div className={`layout-with-sidebar ${sidebarOpen ? 'is-open' : 'is-collapsed'}`}>
+          <aside className={`sidebar-menu ${sidebarOpen ? 'open' : 'collapsed'}`}>
+            <h3>Menu Navigasi</h3>
+            <ul>
+              {menuSections.map((section) => (
+                <li key={section.id} className="sidebar-menu-item">
+                  <a href={`#${section.id}`} className="sidebar-menu-link">
+                    <div className="sidebar-menu-title">{section.title}</div>
+                    <div className="sidebar-menu-summary">{section.summary}</div>
+                    <div className="sidebar-menu-action">Saran: {section.action}</div>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </aside>
+
+          <div className="content-with-sidebar">
+            <section id="priority" className="priority-section">
             <div className="priority-header">
               <div>
                 <h2>Prioritas Buy & Hold sampai TP</h2>
@@ -782,6 +902,7 @@ export default function HomePage() {
               onSelectCoin={setSelected}
             />
           </section>
+          </div>
         </div>
       </div>
     </main>
