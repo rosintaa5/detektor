@@ -411,6 +411,76 @@ a {
   border: 1px solid rgba(148, 163, 184, 0.3);
 }
 
+.layout-with-sidebar {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.sidebar-menu {
+  background-color: rgba(17, 24, 39, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  position: sticky;
+  top: 1rem;
+  align-self: start;
+}
+
+.sidebar-menu h3 {
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+}
+
+.sidebar-menu ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.sidebar-menu-item {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 0.65rem;
+  overflow: hidden;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.sidebar-menu-item:hover {
+  border-color: rgba(59, 130, 246, 0.6);
+  background-color: rgba(59, 130, 246, 0.06);
+}
+
+.sidebar-menu-link {
+  display: block;
+  padding: 0.65rem 0.75rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+.sidebar-menu-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.sidebar-menu-summary,
+.sidebar-menu-action {
+  font-size: 0.8rem;
+  color: #9ca3af;
+  margin-top: 0.2rem;
+}
+
+.sidebar-menu-action {
+  color: #bfdbfe;
+}
+
+.content-with-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
 .table-section h2 {
   margin: 0 0 0.75rem;
   font-size: 1.1rem;
@@ -453,6 +523,15 @@ a {
 }
 
 @media (max-width: 900px) {
+  .layout-with-sidebar {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar-menu {
+    position: relative;
+    top: auto;
+  }
+
   .top-layout {
     grid-template-columns: minmax(0, 1fr);
   }

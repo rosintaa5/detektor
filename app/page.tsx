@@ -481,6 +481,48 @@ export default function HomePage() {
 
   const pumpList = coins.filter((c) => c.pumpStatus === 'mau_pump');
 
+  const menuSections = useMemo(
+    () => [
+      {
+        id: 'priority',
+        title: 'Prioritas Buy & Hold',
+        summary: 'Koin paling akurat untuk dipegang hingga TP berdasarkan sinyal & prediksi.',
+        action: 'Baca entry/TP/SL/RR, lalu eksekusi sesuai saran aksi.',
+      },
+      {
+        id: 'radar',
+        title: 'Radar Peringatan Pump',
+        summary: 'Feed live koin yang baru atau pernah mau pump beserta panduan langkah.',
+        action: 'Ikuti label TP/CL/tahan entry agar tidak ketinggalan momentum.',
+      },
+      {
+        id: 'news',
+        title: 'Berita & Sentimen',
+        summary: 'Kabar terbaru dengan sentimen dan dampak untuk aset terkait.',
+        action: 'Soroti aset dengan sentimen tinggi untuk peluang atau mitigasi risiko.',
+      },
+      {
+        id: 'predictions',
+        title: 'Prediksi 1 Minggu',
+        summary: 'Arah, kepercayaan, dan horizon aksi untuk aset teratas.',
+        action: 'Pilih aset dengan confidence tinggi dan arah bullish untuk rencana entry.',
+      },
+      {
+        id: 'pump-list',
+        title: 'Daftar Mau Pump',
+        summary: 'Kandidat pump terbaru beserta kenaikan dari low 24j.',
+        action: 'Klik koin untuk membuka chart, alasan, dan target TP 1/2/3.',
+      },
+      {
+        id: 'table',
+        title: 'Tabel Detail',
+        summary: 'Tabel lengkap koin mau pump untuk membandingkan cepat.',
+        action: 'Gunakan sorting & klik baris untuk fokus pada koin pilihan.',
+      },
+    ],
+    []
+  );
+
   return (
     <main className="page">
       <header className="page-header">
@@ -504,225 +546,244 @@ export default function HomePage() {
 
       {error && <div className="error-box">Error: {error}</div>}
 
-      <section className="priority-section">
-        <div className="priority-header">
-          <div>
-            <h2>Prioritas Buy & Hold sampai TP</h2>
-            <p className="muted">
-              Menggabungkan sinyal mau pump + prediksi mingguan + RR untuk menyorot koin paling akurat dipegang hingga TP.
-            </p>
-          </div>
-          <span className="badge badge-strong">Live terhubung prediksi & sinyal</span>
-        </div>
+      <div className="layout-with-sidebar">
+        <aside className="sidebar-menu">
+          <h3>Menu Navigasi</h3>
+          <ul>
+            {menuSections.map((section) => (
+              <li key={section.id} className="sidebar-menu-item">
+                <a href={`#${section.id}`} className="sidebar-menu-link">
+                  <div className="sidebar-menu-title">{section.title}</div>
+                  <div className="sidebar-menu-summary">{section.summary}</div>
+                  <div className="sidebar-menu-action">Saran: {section.action}</div>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </aside>
 
-        {topPicks.length === 0 ? (
-          <div className="empty-state small">Menunggu sinyal & prediksi menyatu. Segera muncul begitu data siap.</div>
-        ) : (
-          <div className="priority-grid">
-            {topPicks.map((pick) => (
-              <div key={pick.pair} className="priority-card">
-                <div className="priority-card-head">
-                  <div>
-                    <div className="priority-asset">{pick.asset}</div>
-                    <div className="priority-pair">{pick.pair.toUpperCase()}</div>
-                  </div>
-                  <div className="priority-badges">
-                    <span className="badge badge-pump">{pick.direction.toUpperCase()}</span>
-                    <span className="badge badge-buy">Conf {pick.confidence}%</span>
-                    <span className="badge badge-strong">Score {Math.round(pick.score)}</span>
-                  </div>
-                </div>
-
-                <div className="priority-stats">
-                  <div>
-                    <div className="stat-label">Entry</div>
-                    <div className="stat-value">{formatPrice(pick.entry)}</div>
-                  </div>
-                  <div>
-                    <div className="stat-label">Last</div>
-                    <div className="stat-value">{formatPrice(pick.last)}</div>
-                  </div>
-                  <div>
-                    <div className="stat-label">TP</div>
-                    <div className="stat-value">{formatPrice(pick.tp)}</div>
-                  </div>
-                  <div>
-                    <div className="stat-label">SL</div>
-                    <div className="stat-value">{formatPrice(pick.sl)}</div>
-                  </div>
-                  <div>
-                    <div className="stat-label">RR</div>
-                    <div className="stat-value">{pick.rr.toFixed(1)}</div>
-                  </div>
-                </div>
-
-                <div className="priority-body">{pick.rationale}</div>
-                <div className="priority-action">{pick.suggestedAction}</div>
-                <div className="priority-footer">Horizon: {pick.horizon}</div>
+        <div className="content-with-sidebar">
+          <section id="priority" className="priority-section">
+            <div className="priority-header">
+              <div>
+                <h2>Prioritas Buy & Hold sampai TP</h2>
+                <p className="muted">
+                  Menggabungkan sinyal mau pump + prediksi mingguan + RR untuk menyorot koin paling akurat dipegang hingga TP.
+                </p>
               </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="side-section">
-        <h3>Radar Peringatan Pump</h3>
-        {warnings.length === 0 ? (
-          <p className="muted">Belum ada peringatan baru. Periksa secara berkala agar tidak ketinggalan momentum.</p>
-        ) : (
-          <ul className="side-list">
-            {warnings.map((warn) => (
-              <li key={`${warn.pair}-${warn.time}`} className="side-list-item">
-                <div className="side-list-title">
-                  <span>{warn.pair.toUpperCase()}</span>
-                  <span className="badge badge-pump">{warn.label}</span>
-                </div>
-                <div className="side-list-sub">
-                  {warn.note}
-                </div>
-                <div className="side-list-sub muted">
-                  {formatRelativeTime(warn.time)} • Naik dari low 24j ~{warn.moveFromLowPct.toFixed(1)}% • Volume {formatter.format(warn.volIdr)} IDR
-                </div>
-                <div className="side-list-sub muted">
-                  Harga {formatPrice(warn.last)} | Entry {formatPrice(warn.entry)} | TP {formatPrice(warn.tp)} | SL {formatPrice(warn.sl)} | RR {warn.rr.toFixed(1)}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="side-section">
-        <h3>Berita & Sentimen Terbaru</h3>
-        {newsError && <div className="error-box">{newsError}</div>}
-        {news.length === 0 ? (
-          <p className="muted">Belum ada berita yang bisa ditampilkan.</p>
-        ) : (
-          <ul className="side-list">
-            {news.map((item) => (
-              <li key={item.id} className="side-list-item">
-                <div className="side-list-title">
-                  <span>{item.title}</span>
-                  <span
-                    className={`badge ${
-                      item.sentiment === 'bullish'
-                        ? 'badge-pump'
-                        : item.sentiment === 'bearish'
-                          ? 'badge-danger'
-                          : 'badge-neutral'
-                    }`}
-                  >
-                    {item.sentiment.toUpperCase()}
-                  </span>
-                </div>
-                <div className="side-list-sub">{item.summary}</div>
-                <div className="side-list-sub muted">
-                  {item.source} • Dampak {item.impact} • Aset: {item.assets.join(', ')}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="side-section">
-        <h3>Prediksi Crypto & Coin 1 Minggu Ke Depan</h3>
-        {predictions.length === 0 ? (
-          <p className="muted">Prediksi mingguan muncul setelah data koin dan berita termuat.</p>
-        ) : (
-          <ul className="side-list">
-            {predictions.map((pred) => (
-              <li key={pred.asset} className="side-list-item">
-                <div className="side-list-title">
-                  <span>{pred.asset}</span>
-                  <span
-                    className={`badge ${
-                      pred.direction === 'bullish'
-                        ? 'badge-pump'
-                        : pred.direction === 'bearish'
-                          ? 'badge-danger'
-                          : 'badge-neutral'
-                    }`}
-                  >
-                    {pred.direction.toUpperCase()}
-                  </span>
-                </div>
-                <div className="side-list-sub">Kepercayaan {pred.confidence}% • Horison {pred.horizon}</div>
-                <div className="side-list-sub">{pred.rationale}</div>
-                <div className="side-list-sub muted">Saran: {pred.suggestedAction}</div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="side-section">
-        <h3>Daftar koin mau pump</h3>
-        <p className="muted">Klik koin untuk menampilkan detail, chart, dan TP 1/2/3 di bawah.</p>
-        {pumpList.length === 0 ? (
-          <p className="muted">Belum ada koin yang terdeteksi mau pump.</p>
-        ) : (
-          <ul className="side-list">
-            {pumpList.map((c) => (
-              <li
-                key={c.pair}
-                className={`side-list-item ${selected?.pair === c.pair ? 'active' : ''}`}
-                onClick={() => setSelected(c)}
-              >
-                <div className="side-list-title">
-                  <span>{c.pair.toUpperCase()}</span>
-                  <span className="badge badge-pump">Mau pump</span>
-                </div>
-                <div className="side-list-sub">Naik dari low 24j ~{c.moveFromLowPct.toFixed(1)}%</div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="top-layout">
-        <div className="left-panel">
-          {selected ? (
-            <>
-              <PairChart coin={selected} />
-              <div className="reasons-box">
-                <h3>Alasan Sinyal</h3>
-                <ul>
-                  {selected.reasons.map((reason, idx) => (
-                    <li key={idx}>{reason}</li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="reasons-box">
-                <h3>TP 1, 2, 3</h3>
-                <ul className="tp-list">
-                  {computeTpTargets(selected).map((tp, idx) => (
-                    <li key={idx}>
-                      TP {idx + 1}: {formatter.format(tp.price)} ({tp.pct.toFixed(1)}%)
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </>
-          ) : (
-            <div className="empty-state">
-              {loading
-                ? 'Mengambil data koin...'
-                : 'Klik salah satu koin mau pump di atas untuk melihat detail.'}
+              <span className="badge badge-strong">Live terhubung prediksi & sinyal</span>
             </div>
-          )}
-        </div>
-      </section>
 
-      <section className="table-section">
-        <h2>Daftar koin mau pump</h2>
-        <CoinTable
-          coins={pumpList}
-          selectedPair={selected?.pair ?? null}
-          onSelectCoin={setSelected}
-        />
-      </section>
+            {topPicks.length === 0 ? (
+              <div className="empty-state small">Menunggu sinyal & prediksi menyatu. Segera muncul begitu data siap.</div>
+            ) : (
+              <div className="priority-grid">
+                {topPicks.map((pick) => (
+                  <div key={pick.pair} className="priority-card">
+                    <div className="priority-card-head">
+                      <div>
+                        <div className="priority-asset">{pick.asset}</div>
+                        <div className="priority-pair">{pick.pair.toUpperCase()}</div>
+                      </div>
+                      <div className="priority-badges">
+                        <span className="badge badge-pump">{pick.direction.toUpperCase()}</span>
+                        <span className="badge badge-buy">Conf {pick.confidence}%</span>
+                        <span className="badge badge-strong">Score {Math.round(pick.score)}</span>
+                      </div>
+                    </div>
+
+                    <div className="priority-stats">
+                      <div>
+                        <div className="stat-label">Entry</div>
+                        <div className="stat-value">{formatPrice(pick.entry)}</div>
+                      </div>
+                      <div>
+                        <div className="stat-label">Last</div>
+                        <div className="stat-value">{formatPrice(pick.last)}</div>
+                      </div>
+                      <div>
+                        <div className="stat-label">TP</div>
+                        <div className="stat-value">{formatPrice(pick.tp)}</div>
+                      </div>
+                      <div>
+                        <div className="stat-label">SL</div>
+                        <div className="stat-value">{formatPrice(pick.sl)}</div>
+                      </div>
+                      <div>
+                        <div className="stat-label">RR</div>
+                        <div className="stat-value">{pick.rr.toFixed(1)}</div>
+                      </div>
+                    </div>
+
+                    <div className="priority-body">{pick.rationale}</div>
+                    <div className="priority-action">{pick.suggestedAction}</div>
+                    <div className="priority-footer">Horizon: {pick.horizon}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section id="radar" className="side-section">
+            <h3>Radar Peringatan Pump</h3>
+            {warnings.length === 0 ? (
+              <p className="muted">Belum ada peringatan baru. Periksa secara berkala agar tidak ketinggalan momentum.</p>
+            ) : (
+              <ul className="side-list">
+                {warnings.map((warn) => (
+                  <li key={`${warn.pair}-${warn.time}`} className="side-list-item">
+                    <div className="side-list-title">
+                      <span>{warn.pair.toUpperCase()}</span>
+                      <span className="badge badge-pump">{warn.label}</span>
+                    </div>
+                    <div className="side-list-sub">
+                      {warn.note}
+                    </div>
+                    <div className="side-list-sub muted">
+                      {formatRelativeTime(warn.time)} • Naik dari low 24j ~{warn.moveFromLowPct.toFixed(1)}% • Volume {formatter.format(warn.volIdr)} IDR
+                    </div>
+                    <div className="side-list-sub muted">
+                      Harga {formatPrice(warn.last)} | Entry {formatPrice(warn.entry)} | TP {formatPrice(warn.tp)} | SL {formatPrice(warn.sl)} | RR {warn.rr.toFixed(1)}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section id="news" className="side-section">
+            <h3>Berita & Sentimen Terbaru</h3>
+            {newsError && <div className="error-box">{newsError}</div>}
+            {news.length === 0 ? (
+              <p className="muted">Belum ada berita yang bisa ditampilkan.</p>
+            ) : (
+              <ul className="side-list">
+                {news.map((item) => (
+                  <li key={item.id} className="side-list-item">
+                    <div className="side-list-title">
+                      <span>{item.title}</span>
+                      <span
+                        className={`badge ${
+                          item.sentiment === 'bullish'
+                            ? 'badge-pump'
+                            : item.sentiment === 'bearish'
+                              ? 'badge-danger'
+                              : 'badge-neutral'
+                        }`}
+                      >
+                        {item.sentiment.toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="side-list-sub">{item.summary}</div>
+                    <div className="side-list-sub muted">
+                      {item.source} • Dampak {item.impact} • Aset: {item.assets.join(', ')}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section id="predictions" className="side-section">
+            <h3>Prediksi Crypto & Coin 1 Minggu Ke Depan</h3>
+            {predictions.length === 0 ? (
+              <p className="muted">Prediksi mingguan muncul setelah data koin dan berita termuat.</p>
+            ) : (
+              <ul className="side-list">
+                {predictions.map((pred) => (
+                  <li key={pred.asset} className="side-list-item">
+                    <div className="side-list-title">
+                      <span>{pred.asset}</span>
+                      <span
+                        className={`badge ${
+                          pred.direction === 'bullish'
+                            ? 'badge-pump'
+                            : pred.direction === 'bearish'
+                              ? 'badge-danger'
+                              : 'badge-neutral'
+                        }`}
+                      >
+                        {pred.direction.toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="side-list-sub">Kepercayaan {pred.confidence}% • Horison {pred.horizon}</div>
+                    <div className="side-list-sub">{pred.rationale}</div>
+                    <div className="side-list-sub muted">Saran: {pred.suggestedAction}</div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section id="pump-list" className="side-section">
+            <h3>Daftar koin mau pump</h3>
+            <p className="muted">Klik koin untuk menampilkan detail, chart, dan TP 1/2/3 di bawah.</p>
+            {pumpList.length === 0 ? (
+              <p className="muted">Belum ada koin yang terdeteksi mau pump.</p>
+            ) : (
+              <ul className="side-list">
+                {pumpList.map((c) => (
+                  <li
+                    key={c.pair}
+                    className={`side-list-item ${selected?.pair === c.pair ? 'active' : ''}`}
+                    onClick={() => setSelected(c)}
+                  >
+                    <div className="side-list-title">
+                      <span>{c.pair.toUpperCase()}</span>
+                      <span className="badge badge-pump">Mau pump</span>
+                    </div>
+                    <div className="side-list-sub">Naik dari low 24j ~{c.moveFromLowPct.toFixed(1)}%</div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section id="details" className="top-layout">
+            <div className="left-panel">
+              {selected ? (
+                <>
+                  <PairChart coin={selected} />
+                  <div className="reasons-box">
+                    <h3>Alasan Sinyal</h3>
+                    <ul>
+                      {selected.reasons.map((reason, idx) => (
+                        <li key={idx}>{reason}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="reasons-box">
+                    <h3>TP 1, 2, 3</h3>
+                    <ul className="tp-list">
+                      {computeTpTargets(selected).map((tp, idx) => (
+                        <li key={idx}>
+                          TP {idx + 1}: {formatter.format(tp.price)} ({tp.pct.toFixed(1)}%)
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </>
+              ) : (
+                <div className="empty-state">
+                  {loading
+                    ? 'Mengambil data koin...'
+                    : 'Klik salah satu koin mau pump di atas untuk melihat detail.'}
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section id="table" className="table-section">
+            <h2>Daftar koin mau pump</h2>
+            <CoinTable
+              coins={pumpList}
+              selectedPair={selected?.pair ?? null}
+              onSelectCoin={setSelected}
+            />
+          </section>
+        </div>
+      </div>
     </main>
   );
 }
