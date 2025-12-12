@@ -75,7 +75,6 @@ export default function HomePage() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [newsError, setNewsError] = useState<string | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const lastWarningStateRef = useRef<Map<string, string>>(new Map());
   const trackedPairsRef = useRef<Map<string, number>>(new Map());
 
@@ -656,22 +655,12 @@ export default function HomePage() {
       {error && <div className="error-box">Error: {error}</div>}
 
       <div className="layout-shell">
-        <button
-          type="button"
-          className={`sidebar-toggle ${sidebarOpen ? 'open' : 'collapsed'}`}
-          onClick={() => setSidebarOpen((prev) => !prev)}
-          aria-label={sidebarOpen ? 'Sembunyikan menu' : 'Tampilkan menu'}
-          title={sidebarOpen ? 'Sembunyikan menu' : 'Tampilkan menu'}
-        >
-          ⋮
-        </button>
-
-        <div className={`layout-with-sidebar ${sidebarOpen ? 'is-open' : 'is-collapsed'}`}>
-          <aside className={`sidebar-menu ${sidebarOpen ? 'open' : 'collapsed'}`}>
+        <div className="layout-with-sidebar">
+          <aside className="sidebar-menu">
             <h3>Menu Navigasi</h3>
             <ul>
               {menuSections.map((section) => (
-                <li key={section.id} className="sidebar-menu-item">
+                <li key={section.id} className={`sidebar-menu-item accent-${section.id}`}>
                   <a href={`#${section.id}`} className="sidebar-menu-link">
                     <div className="sidebar-menu-title">{section.title}</div>
                     <div className="sidebar-menu-summary">{section.summary}</div>
@@ -683,7 +672,7 @@ export default function HomePage() {
           </aside>
 
           <div className="content-with-sidebar">
-            <section id="priority" className="priority-section">
+            <section id="priority" className="priority-section section-card accent-priority">
             <div className="priority-header">
               <div>
                 <h2>Prioritas Buy & Hold sampai TP</h2>
@@ -744,7 +733,7 @@ export default function HomePage() {
             )}
           </section>
 
-          <section id="radar" className="side-section">
+          <section id="radar" className="side-section section-card accent-radar">
             <h3>Radar Peringatan Pump</h3>
             {warnings.length === 0 ? (
               <p className="muted">Belum ada peringatan baru. Periksa secara berkala agar tidak ketinggalan momentum.</p>
@@ -771,7 +760,7 @@ export default function HomePage() {
             )}
           </section>
 
-          <section id="news" className="side-section">
+          <section id="news" className="side-section section-card accent-news">
             <h3>Berita & Sentimen Terbaru</h3>
             {newsError && <div className="error-box">{newsError}</div>}
             {news.length === 0 ? (
@@ -804,7 +793,7 @@ export default function HomePage() {
             )}
           </section>
 
-          <section id="predictions" className="side-section">
+          <section id="predictions" className="side-section section-card accent-predictions">
             <h3>Prediksi Crypto & Coin 1 Minggu Ke Depan</h3>
             {predictions.length === 0 ? (
               <p className="muted">Prediksi mingguan muncul setelah data koin dan berita termuat.</p>
@@ -835,7 +824,7 @@ export default function HomePage() {
             )}
           </section>
 
-          <section id="pump-list" className="side-section">
+          <section id="pump-list" className="side-section section-card accent-pump">
             <h3>Daftar koin mau pump</h3>
             <p className="muted">Klik koin untuk menampilkan detail, chart, dan TP 1/2/3 di bawah.</p>
             {pumpList.length === 0 ? (
@@ -894,7 +883,7 @@ export default function HomePage() {
             </div>
           </section>
 
-          <section id="table" className="table-section">
+          <section id="table" className="table-section section-card accent-detail">
             <h2>Daftar koin mau pump</h2>
             <CoinTable
               coins={pumpList}
