@@ -668,6 +668,16 @@ a {
   font-weight: 700;
 }
 
+.market-brief-list {
+  margin: 0.1rem 0 0.35rem;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.2rem;
+  color: #e0f2fe;
+  font-size: 0.9rem;
+  list-style: disc;
+}
+
 .market-brief-main {
   font-size: 1rem;
   font-weight: 700;

@@ -86,7 +86,18 @@ export default function HomePage() {
     []
   );
 
+  const usdFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        maximumFractionDigits: 2,
+      }),
+    []
+  );
+
   const formatPrice = useCallback((value: number) => formatter.format(value), [formatter]);
+  const formatUsd = useCallback((value: number) => usdFormatter.format(value), [usdFormatter]);
 
   const describeHorizonWindow = useCallback(
     (horizon: string) => {
@@ -639,8 +650,8 @@ export default function HomePage() {
     let action = 'Pantau BTC lebih dulu sebelum eksekusi aset lain.';
 
     if (supportRaw && resistanceRaw && last) {
-      const support = formatPrice(supportRaw);
-      const resistance = formatPrice(resistanceRaw);
+      const support = formatUsd(supportRaw);
+      const resistance = formatUsd(resistanceRaw);
       const biasLabel = bias === 'bullish' ? 'Bull' : bias === 'bearish' ? 'Bear' : 'Netral';
 
       line = `${biasLabel} ${horizon} (${horizonWindow.untilLabel}); support ${support}, resist ${resistance}.`;
@@ -671,7 +682,7 @@ export default function HomePage() {
     }
 
     return { line, caution, action };
-  }, [coins, describeHorizonWindow, formatPrice, predictions]);
+  }, [coins, describeHorizonWindow, formatUsd, predictions]);
 
   const bestTodaySummary = useMemo(() => {
     if (topPicks.length === 0) {
@@ -694,6 +705,43 @@ export default function HomePage() {
       )}; hindari kejar harga di atas ${formatPrice(leader.entry * 1.04)}.`,
     };
   }, [describeHorizonWindow, formatPrice, topPicks]);
+
+  const bestPumpTodaySummary = useMemo(() => {
+    const pumpPickCandidates = topPicks.filter((pick) => pumpList.some((p) => p.pair === pick.pair));
+    const fallbackFromPumpList = pumpList.map((coin) => ({
+      pair: coin.pair,
+      asset: normalizeAssetFromPair(coin.pair),
+      entry: coin.entry,
+      tp: coin.tp,
+      sl: coin.sl,
+      direction: coin.pricePhase === 'baru_mau_naik' ? 'bullish' : 'netral',
+      horizon: '1-3 hari',
+    }));
+
+    const picks = (pumpPickCandidates.length ? pumpPickCandidates : fallbackFromPumpList).slice(0, 2);
+
+    if (picks.length === 0) {
+      return {
+        headline: 'Belum ada top pick pump untuk dieksekusi hari ini.',
+        items: [],
+        action: 'Pantau radar sampai ada koin pump yang siap dieksekusi.',
+      };
+    }
+
+    const items = picks.map((pick) => {
+      const horizonWindow = describeHorizonWindow(pick.horizon ?? '1-3 hari');
+      const dirLabel = pick.direction === 'bearish' ? 'Bear' : 'Bull';
+      return `${pick.asset} ${dirLabel} sampai ${horizonWindow.untilLabel}: entry ${formatPrice(pick.entry)}, TP ${formatPrice(
+        pick.tp
+      )}, SL ${formatPrice(pick.sl)}.`;
+    });
+
+    return {
+      headline: `${picks.length} top pick pump hari ini siap dieksekusi.`,
+      items,
+      action: 'Prioritaskan dua koin pump ini lebih dulu sebelum masuk pasangan lain.',
+    };
+  }, [describeHorizonWindow, formatPrice, normalizeAssetFromPair, pumpList, topPicks]);
 
   const menuSections = useMemo(
     () => [
@@ -768,6 +816,17 @@ export default function HomePage() {
           <div className="market-brief-subhead">Top pick eksekusi hari ini</div>
           <div className="market-brief-main">{bestTodaySummary.headline}</div>
           <div className="market-brief-action">{bestTodaySummary.action}</div>
+          <div className="market-brief-divider" />
+          <div className="market-brief-subhead">Top pick pump hari ini</div>
+          <div className="market-brief-main">{bestPumpTodaySummary.headline}</div>
+          {bestPumpTodaySummary.items.length > 0 && (
+            <ul className="market-brief-list">
+              {bestPumpTodaySummary.items.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          )}
+          <div className="market-brief-action">{bestPumpTodaySummary.action}</div>
         </div>
       </section>
 
