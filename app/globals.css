@@ -104,6 +104,12 @@ a {
   text-align: center;
 }
 
+.empty-state.small {
+  min-height: 120px;
+  border: 1px dashed rgba(148, 163, 184, 0.4);
+  border-radius: 0.75rem;
+}
+
 .muted {
   color: #9ca3af;
   font-size: 0.85rem;
@@ -207,6 +213,114 @@ a {
   margin-top: 1rem;
 }
 
+.priority-section {
+  background: linear-gradient(120deg, rgba(59, 130, 246, 0.08), rgba(34, 197, 94, 0.12));
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 0.9rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.priority-section.section-card {
+  background: linear-gradient(120deg, rgba(59, 130, 246, 0.08), rgba(34, 197, 94, 0.12));
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+}
+
+.priority-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.priority-header h2 {
+  margin: 0;
+}
+
+.priority-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.priority-card {
+  background-color: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.6rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.priority-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.priority-asset {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.priority-pair {
+  color: #a5b4fc;
+  font-size: 0.8rem;
+}
+
+.priority-badges {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.priority-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.5rem;
+}
+
+.priority-stats > div {
+  min-width: 0;
+}
+
+.stat-label {
+  color: #9ca3af;
+  font-size: 0.75rem;
+}
+
+.stat-value {
+  font-weight: 700;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.priority-body {
+  font-size: 0.85rem;
+  color: #e5e7eb;
+}
+
+.priority-action {
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #bbf7d0;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.5rem;
+  font-size: 0.82rem;
+}
+
+.priority-footer {
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
 .side-section h3 {
   margin: 0 0 0.5rem;
   font-size: 0.95rem;
@@ -283,11 +397,163 @@ a {
   color: #fecaca;
 }
 
+.badge-danger {
+  border-color: rgba(248, 113, 113, 0.95);
+  background: rgba(127, 29, 29, 0.3);
+  color: #fecdd3;
+}
+
+.badge-neutral {
+  border-color: rgba(148, 163, 184, 0.9);
+  background: rgba(148, 163, 184, 0.15);
+  color: #e5e7eb;
+}
+
 .table-section {
   background-color: rgba(15, 23, 42, 0.8);
-  border-radius: 0.75rem;
+  border-radius: 0.9rem;
   padding: 1rem;
   border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.layout-with-sidebar {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.sidebar-menu {
+  background-color: rgba(17, 24, 39, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 0.9rem;
+  padding: 1rem;
+  position: sticky;
+  top: 1rem;
+  align-self: start;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+}
+
+.sidebar-menu h3 {
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+}
+
+.sidebar-menu ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.sidebar-menu-item {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 0.65rem;
+  overflow: hidden;
+  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sidebar-menu-item:hover {
+  border-color: rgba(59, 130, 246, 0.6);
+  background-color: rgba(59, 130, 246, 0.06);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.18);
+}
+
+.sidebar-menu-link {
+  display: block;
+  padding: 0.65rem 0.75rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+.sidebar-menu-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.sidebar-menu-summary,
+.sidebar-menu-action {
+  font-size: 0.8rem;
+  color: #9ca3af;
+  margin-top: 0.2rem;
+}
+
+.sidebar-menu-action {
+  color: #bfdbfe;
+}
+
+.section-card {
+  background-color: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 0.9rem;
+  padding: 1rem;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+}
+
+.side-section {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.accent-priority {
+  border-left: 4px solid #22c55e;
+}
+
+.accent-radar {
+  border-left: 4px solid #fb7185;
+}
+
+.accent-news {
+  border-left: 4px solid #38bdf8;
+}
+
+.accent-predictions {
+  border-left: 4px solid #a78bfa;
+}
+
+.accent-pump {
+  border-left: 4px solid #fbbf24;
+}
+
+.accent-detail {
+  border-left: 4px solid #14b8a6;
+}
+
+.sidebar-menu-item.accent-priority {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: radial-gradient(circle at 20% 20%, rgba(34, 197, 94, 0.1), rgba(17, 24, 39, 0.8));
+}
+
+.sidebar-menu-item.accent-radar {
+  border-color: rgba(251, 113, 133, 0.35);
+  background: radial-gradient(circle at 20% 20%, rgba(251, 113, 133, 0.12), rgba(17, 24, 39, 0.82));
+}
+
+.sidebar-menu-item.accent-news {
+  border-color: rgba(56, 189, 248, 0.35);
+  background: radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.12), rgba(17, 24, 39, 0.82));
+}
+
+.sidebar-menu-item.accent-predictions {
+  border-color: rgba(167, 139, 250, 0.35);
+  background: radial-gradient(circle at 20% 20%, rgba(167, 139, 250, 0.12), rgba(17, 24, 39, 0.82));
+}
+
+.sidebar-menu-item.accent-pump {
+  border-color: rgba(251, 191, 36, 0.35);
+  background: radial-gradient(circle at 20% 20%, rgba(251, 191, 36, 0.12), rgba(17, 24, 39, 0.82));
+}
+
+.sidebar-menu-item.accent-detail {
+  border-color: rgba(20, 184, 166, 0.35);
+  background: radial-gradient(circle at 20% 20%, rgba(20, 184, 166, 0.12), rgba(17, 24, 39, 0.82));
+}
+
+.content-with-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
 .table-section h2 {
@@ -332,6 +598,15 @@ a {
 }
 
 @media (max-width: 900px) {
+  .layout-with-sidebar {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar-menu {
+    position: relative;
+    top: auto;
+  }
+
   .top-layout {
     grid-template-columns: minmax(0, 1fr);
   }
