@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import PairChart from '../components/PairChart';
 import CoinTable from '../components/CoinTable';
 import type { CoinSignal } from '../lib/sintaLogic';
@@ -14,6 +14,8 @@ interface PumpWarning {
   moveFromLowPct: number;
   volIdr: number;
   time: number;
+  label: string;
+  note: string;
 }
 
 export default function HomePage() {
@@ -22,7 +24,76 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<PumpWarning[]>([]);
-  const pumpSeenRef = useState<Set<string>>(() => new Set())[0];
+  const lastWarningStateRef = useRef<Map<string, string>>(new Map());
+
+  const formatter = useMemo(
+    () =>
+      new Intl.NumberFormat('id-ID', {
+        maximumFractionDigits: 2,
+      }),
+    []
+  );
+
+  const formatPrice = useCallback((value: number) => formatter.format(value), [formatter]);
+
+  const buildWarningGuidance = useCallback(
+    (coin: CoinSignal) => {
+      const { entry, tp, sl, last } = coin;
+
+      const nearTp = last >= tp * 0.97 && last < tp * 1.03;
+      const hitTp = last >= tp * 1.03;
+      const nearEntry = last >= entry * 0.97 && last <= entry * 1.04;
+      const aboveEntry = last > entry * 1.04;
+      const nearSl = last <= sl * 1.03;
+
+      if (nearSl) {
+        return {
+          key: 'cl',
+          label: 'CL / Risk Alert',
+          note: `Harga mendekati/turun ke area SL ${formatPrice(sl)}. Jika tidak bertahan, disiplin CL agar tidak makin dalam.`,
+        };
+      }
+
+      if (hitTp) {
+        return {
+          key: 'tp_full',
+          label: 'TP Semua',
+          note: `TP ${formatPrice(tp)} sudah tersentuh. Amankan profit dan hindari entry baru sampai ada setup ulang.`,
+        };
+      }
+
+      if (nearTp) {
+        return {
+          key: 'tp_partial',
+          label: 'TP Sebagian',
+          note: `Harga mendekati TP ${formatPrice(tp)}. Realisasikan sebagian, sisanya biarkan mengalir jika volume masih kuat.`,
+        };
+      }
+
+      if (aboveEntry) {
+        return {
+          key: 'no_entry',
+          label: 'Tahan Entry Baru',
+          note: `Momentum sudah jalan di atas entry ${formatPrice(entry)}. Jangan kejar-kejaran, fokus kelola posisi dan siapkan TP di ${formatPrice(tp)}.`,
+        };
+      }
+
+      if (nearEntry) {
+        return {
+          key: 'entry_zone',
+          label: 'Area Entry',
+          note: `Harga masih sekitar entry ${formatPrice(entry)}. Bisa cicil, tapi tetap disiplin SL ${formatPrice(sl)} dan target TP ${formatPrice(tp)}.`,
+        };
+      }
+
+      return {
+        key: 'wait',
+        label: 'Tunggu Momentum',
+        note: `Belum menyentuh area entry ${formatPrice(entry)}. Sabar tunggu konfirmasi sebelum entry dan bidik TP di ${formatPrice(tp)}.`,
+      };
+    },
+    [formatPrice]
+  );
 
   const fetchData = useCallback(async () => {
     try {
@@ -38,23 +109,44 @@ export default function HomePage() {
 
       const pumpCandidates = incomingCoins.filter((c) => c.pumpStatus === 'mau_pump');
 
-      const newlyPump = pumpCandidates.filter((coin) => !pumpSeenRef.has(coin.pair));
-      if (newlyPump.length > 0) {
-        const now = Date.now();
-        setWarnings((prev) => {
-          const stillFresh = prev.filter((item) => now - item.time < 5 * 60 * 1000);
-          const incoming = newlyPump.map((coin) => ({
-            pair: coin.pair,
-            moveFromLowPct: coin.moveFromLowPct,
-            volIdr: coin.volIdr,
-            time: now,
-          }));
-          return [...stillFresh, ...incoming];
-        });
-      }
+      const now = Date.now();
+      const pumpPairs = new Set(pumpCandidates.map((c) => c.pair));
 
-      pumpSeenRef.clear();
-      pumpCandidates.forEach((coin) => pumpSeenRef.add(coin.pair));
+      lastWarningStateRef.current.forEach((_, pair) => {
+        if (!pumpPairs.has(pair)) {
+          lastWarningStateRef.current.delete(pair);
+        }
+      });
+
+      setWarnings((prev) => {
+        const retentionMs = 30 * 60 * 1000;
+        const stillFresh = prev.filter((item) => now - item.time < retentionMs);
+        const updates: PumpWarning[] = [];
+
+        pumpCandidates.forEach((coin) => {
+          const guidance = buildWarningGuidance(coin);
+          const lastKey = lastWarningStateRef.current.get(coin.pair);
+
+          if (lastKey !== guidance.key) {
+            updates.push({
+              pair: coin.pair,
+              moveFromLowPct: coin.moveFromLowPct,
+              volIdr: coin.volIdr,
+              time: now,
+              label: guidance.label,
+              note: guidance.note,
+            });
+            lastWarningStateRef.current.set(coin.pair, guidance.key);
+          }
+        });
+
+        const combined = [...stillFresh, ...updates];
+        const maxItems = 40;
+        if (combined.length > maxItems) {
+          return combined.slice(combined.length - maxItems);
+        }
+        return combined;
+      });
 
       setSelected((prev) => {
         if (!prev) return null;
@@ -68,7 +160,7 @@ export default function HomePage() {
     } finally {
       setLoading(false);
     }
-  }, [pumpSeenRef]);
+  }, [buildWarningGuidance]);
 
   useEffect(() => {
     fetchData();
@@ -77,15 +169,12 @@ export default function HomePage() {
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
-      setWarnings((prev) => prev.filter((item) => now - item.time < 5 * 60 * 1000));
-    }, 30000);
+      const retentionMs = 30 * 60 * 1000;
+      setWarnings((prev) => prev.filter((item) => now - item.time < retentionMs));
+    }, 60_000);
 
     return () => clearInterval(interval);
   }, []);
-
-  const formatter = new Intl.NumberFormat('id-ID', {
-    maximumFractionDigits: 2,
-  });
 
   const computeTpTargets = (coin: CoinSignal) => {
     const diff = coin.tp - coin.entry;
@@ -134,12 +223,14 @@ export default function HomePage() {
               <li key={`${warn.pair}-${warn.time}`} className="side-list-item">
                 <div className="side-list-title">
                   <span>{warn.pair.toUpperCase()}</span>
-                  <span className="badge badge-pump">Masuk radar</span>
+                  <span className="badge badge-pump">{warn.label}</span>
                 </div>
                 <div className="side-list-sub">
+                  {warn.note}
+                </div>
+                <div className="side-list-sub muted">
                   Naik dari low 24j ~{warn.moveFromLowPct.toFixed(1)}% • Volume {formatter.format(warn.volIdr)} IDR
                 </div>
-                <div className="side-list-sub muted">Segera cek momentum agar tidak terjebak CL.</div>
               </li>
             ))}
           </ul>
