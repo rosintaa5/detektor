@@ -1,12 +1,38 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import PairChart from '../components/PairChart';
 import CoinTable from '../components/CoinTable';
+import PairChart from '../components/PairChart';
 import type { CoinSignal } from '../lib/sintaLogic';
 
 interface ApiResponse {
   coins: CoinSignal[];
+}
+
+type PredictionDirection = 'bullish' | 'bearish' | 'netral';
+
+interface NewsItem {
+  id: string;
+  title: string;
+  source: string;
+  summary: string;
+  publishedAt: string;
+  sentiment: 'bullish' | 'bearish' | 'neutral';
+  assets: string[];
+  impact: 'high' | 'medium' | 'low';
+}
+
+interface NewsResponse {
+  news: NewsItem[];
+}
+
+interface Prediction {
+  asset: string;
+  direction: PredictionDirection;
+  confidence: number;
+  rationale: string;
+  suggestedAction: string;
+  horizon: string;
 }
 
 interface PumpWarning {
@@ -30,6 +56,9 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<PumpWarning[]>([]);
   const [nowTs, setNowTs] = useState(() => Date.now());
+  const [news, setNews] = useState<NewsItem[]>([]);
+  const [predictions, setPredictions] = useState<Prediction[]>([]);
+  const [newsError, setNewsError] = useState<string | null>(null);
   const lastWarningStateRef = useRef<Map<string, string>>(new Map());
   const trackedPairsRef = useRef<Map<string, number>>(new Map());
 
@@ -122,6 +151,113 @@ export default function HomePage() {
     [formatPrice]
   );
 
+  const normalizeAssetFromPair = useCallback((pair: string) => {
+    const [asset] = pair.split('_');
+    return asset?.toUpperCase?.() ?? pair.toUpperCase();
+  }, []);
+
+  const buildWeeklyPredictions = useCallback(
+    (coinList: CoinSignal[], newsList: NewsItem[]): Prediction[] => {
+      if (coinList.length === 0 && newsList.length === 0) return [];
+
+      const newsScore = new Map<string, { score: number; hits: number; impact: number }>();
+
+      newsList.forEach((item) => {
+        const sentimentScore = item.sentiment === 'bullish' ? 1 : item.sentiment === 'bearish' ? -1 : 0.2;
+        const impactWeight = item.impact === 'high' ? 1.2 : item.impact === 'medium' ? 1 : 0.6;
+
+        item.assets.forEach((asset) => {
+          const key = asset.toUpperCase();
+          const current = newsScore.get(key) ?? { score: 0, hits: 0, impact: 0 };
+          newsScore.set(key, {
+            score: current.score + sentimentScore * impactWeight,
+            hits: current.hits + 1,
+            impact: current.impact + impactWeight,
+          });
+        });
+      });
+
+      const predictionsMap = new Map<string, Prediction>();
+
+      coinList.forEach((coin) => {
+        const asset = normalizeAssetFromPair(coin.pair);
+        const newsStats = newsScore.get(asset);
+
+        const pumpBoost = coin.pumpStatus === 'mau_pump' ? 1 : 0;
+        const rrBoost = Math.min(1, Math.max(0, (coin.rr - 1.5) / 2));
+        const momentum = Math.min(1, coin.moveFromLowPct / 30);
+
+        const baseScore = (newsStats?.score ?? 0) + pumpBoost + rrBoost + momentum;
+
+        const direction: PredictionDirection =
+          baseScore >= 1.5 ? 'bullish' : baseScore <= -0.6 ? 'bearish' : 'netral';
+
+        const confidence = Math.min(100, Math.max(35, Math.round((Math.abs(baseScore) + (newsStats?.hits ?? 0)) * 12)));
+
+        const rationaleParts = [
+          `RR ${coin.rr.toFixed(1)} dengan TP ${formatPrice(coin.tp)} dan SL ${formatPrice(coin.sl)}`,
+        ];
+
+        if (newsStats) {
+          rationaleParts.push(
+            `${newsStats.hits} kabar sentimen ${newsStats.score >= 0 ? 'positif' : 'negatif'} (bobot ${newsStats.impact.toFixed(
+              1
+            )})`
+          );
+        }
+
+        if (coin.pumpStatus === 'mau_pump') {
+          rationaleParts.push('status mau pump menambah momentum');
+        }
+
+        const suggestedAction =
+          direction === 'bullish'
+            ? 'Entry bertahap, TP bertingkat, jaga SL ketat.'
+            : direction === 'bearish'
+              ? 'Hindari entry baru, fokus proteksi atau cari relief rally untuk exit.'
+              : 'Pantau dulu, tunggu konfirmasi volume atau retest area entry.';
+
+        predictionsMap.set(asset, {
+          asset,
+          direction,
+          confidence,
+          rationale: rationaleParts.join(' • '),
+          suggestedAction,
+          horizon: '1 minggu',
+        });
+      });
+
+      newsScore.forEach((stats, asset) => {
+        if (predictionsMap.has(asset)) return;
+
+        const direction: PredictionDirection =
+          stats.score >= 1.2 ? 'bullish' : stats.score <= -0.6 ? 'bearish' : 'netral';
+        const confidence = Math.min(90, Math.max(30, Math.round((Math.abs(stats.score) + stats.hits) * 10)));
+
+        predictionsMap.set(asset, {
+          asset,
+          direction,
+          confidence,
+          rationale: `${stats.hits} kabar terkait dengan skor sentimen ${(stats.score / stats.hits).toFixed(2)} dan bobot ${stats.impact.toFixed(
+            1
+          )}`,
+          suggestedAction:
+            direction === 'bullish'
+              ? 'Pantau peluang breakout, siapkan entry skala kecil dengan SL dekat.'
+              : direction === 'bearish'
+                ? 'Waspada volatilitas, hindari entry agresif.'
+                : 'Netral, tunggu katalis baru atau data teknikal tambahan.',
+          horizon: '1 minggu',
+        });
+      });
+
+      return Array.from(predictionsMap.values())
+        .sort((a, b) => b.confidence - a.confidence)
+        .slice(0, 12);
+    },
+    [formatPrice, normalizeAssetFromPair]
+  );
+
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
@@ -207,15 +343,38 @@ export default function HomePage() {
     }
   }, [buildWarningGuidance]);
 
+  const fetchNews = useCallback(async () => {
+    try {
+      setNewsError(null);
+      const res = await fetch('/api/news');
+      if (!res.ok) {
+        throw new Error(`Gagal mengambil berita (${res.status})`);
+      }
+      const data: NewsResponse = await res.json();
+      setNews(data.news || []);
+    } catch (err: unknown) {
+      console.error(err);
+      setNewsError(err instanceof Error ? err.message : 'Gagal mengambil berita');
+    }
+  }, []);
+
   useEffect(() => {
     fetchData();
+    fetchNews();
     const interval = setInterval(() => {
       fetchData();
       setNowTs(Date.now());
     }, 15_000);
 
-    return () => clearInterval(interval);
-  }, [fetchData]);
+    const newsInterval = setInterval(() => {
+      fetchNews();
+    }, 5 * 60 * 1000);
+
+    return () => {
+      clearInterval(interval);
+      clearInterval(newsInterval);
+    };
+  }, [fetchData, fetchNews]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -231,6 +390,10 @@ export default function HomePage() {
     const interval = setInterval(() => setNowTs(Date.now()), 5_000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    setPredictions(buildWeeklyPredictions(coins, news));
+  }, [buildWeeklyPredictions, coins, news]);
 
   const computeTpTargets = (coin: CoinSignal) => {
     const diff = coin.tp - coin.entry;
@@ -290,6 +453,70 @@ export default function HomePage() {
                 <div className="side-list-sub muted">
                   Harga {formatPrice(warn.last)} | Entry {formatPrice(warn.entry)} | TP {formatPrice(warn.tp)} | SL {formatPrice(warn.sl)} | RR {warn.rr.toFixed(1)}
                 </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="side-section">
+        <h3>Berita & Sentimen Terbaru</h3>
+        {newsError && <div className="error-box">{newsError}</div>}
+        {news.length === 0 ? (
+          <p className="muted">Belum ada berita yang bisa ditampilkan.</p>
+        ) : (
+          <ul className="side-list">
+            {news.map((item) => (
+              <li key={item.id} className="side-list-item">
+                <div className="side-list-title">
+                  <span>{item.title}</span>
+                  <span
+                    className={`badge ${
+                      item.sentiment === 'bullish'
+                        ? 'badge-pump'
+                        : item.sentiment === 'bearish'
+                          ? 'badge-danger'
+                          : 'badge-neutral'
+                    }`}
+                  >
+                    {item.sentiment.toUpperCase()}
+                  </span>
+                </div>
+                <div className="side-list-sub">{item.summary}</div>
+                <div className="side-list-sub muted">
+                  {item.source} • Dampak {item.impact} • Aset: {item.assets.join(', ')}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="side-section">
+        <h3>Prediksi Crypto & Coin 1 Minggu Ke Depan</h3>
+        {predictions.length === 0 ? (
+          <p className="muted">Prediksi mingguan muncul setelah data koin dan berita termuat.</p>
+        ) : (
+          <ul className="side-list">
+            {predictions.map((pred) => (
+              <li key={pred.asset} className="side-list-item">
+                <div className="side-list-title">
+                  <span>{pred.asset}</span>
+                  <span
+                    className={`badge ${
+                      pred.direction === 'bullish'
+                        ? 'badge-pump'
+                        : pred.direction === 'bearish'
+                          ? 'badge-danger'
+                          : 'badge-neutral'
+                    }`}
+                  >
+                    {pred.direction.toUpperCase()}
+                  </span>
+                </div>
+                <div className="side-list-sub">Kepercayaan {pred.confidence}% • Horison {pred.horizon}</div>
+                <div className="side-list-sub">{pred.rationale}</div>
+                <div className="side-list-sub muted">Saran: {pred.suggestedAction}</div>
               </li>
             ))}
           </ul>
