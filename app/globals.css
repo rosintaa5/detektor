@@ -462,9 +462,17 @@ a {
 
 .sidebar-menu-link {
   display: block;
-  padding: 0.65rem 0.75rem;
+  padding: 0.75rem 0.85rem;
   text-decoration: none;
   color: inherit;
+}
+
+.sidebar-menu-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
 }
 
 .sidebar-menu-title {
@@ -472,15 +480,51 @@ a {
   font-size: 0.95rem;
 }
 
+.sidebar-chip {
+  font-size: 0.7rem;
+  background: rgba(59, 130, 246, 0.15);
+  color: #bfdbfe;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+}
+
+.sidebar-meta {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+  border-radius: 0.6rem;
+  padding: 0.35rem 0.5rem;
+  display: grid;
+  gap: 0.15rem;
+  margin-bottom: 0.35rem;
+}
+
+.sidebar-label {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #e5e7eb;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.sidebar-label.accent {
+  color: #bfdbfe;
+}
+
 .sidebar-menu-summary,
 .sidebar-menu-action {
   font-size: 0.8rem;
-  color: #9ca3af;
-  margin-top: 0.2rem;
+  color: #e5e7eb;
+  margin-top: 0.05rem;
+  line-height: 1.35;
 }
 
 .sidebar-menu-action {
   color: #bfdbfe;
+  font-weight: 700;
 }
 
 .section-card {

@@ -484,17 +484,19 @@ export default function HomePage() {
   const topPickInsight = useMemo(() => {
     if (topPicks.length === 0) {
       return {
-        summary: 'Menunggu sinyal gabungan paling akurat muncul.',
-        action: 'Tahan entry besar, siapkan dana untuk kandidat skor tinggi berikutnya.',
+        summary: 'Belum ada kandidat akurat untuk buy & hold.',
+        action: 'Tahan entry besar, siapkan dana dan tunggu skor tertinggi berikutnya.',
       };
     }
 
     const leader = topPicks[0];
     return {
-      summary: `${leader.asset} teratas dengan skor ${Math.round(leader.score)} (${leader.direction}).`,
-      action: `Masuk bertahap di ${formatPrice(leader.entry)}, tahan sampai TP ${formatPrice(
+      summary: `${leader.asset} skor ${Math.round(leader.score)} (${leader.direction}), target ${formatPrice(
         leader.tp
-      )} (SL ${formatPrice(leader.sl)}).`,
+      )}.`,
+      action: `Fokus beli ${leader.asset} di ${formatPrice(leader.entry)}, tahan sampai TP ${formatPrice(
+        leader.tp
+      )}; disiplin SL ${formatPrice(leader.sl)}.`,
     };
   }, [formatPrice, topPicks]);
 
@@ -506,9 +508,9 @@ export default function HomePage() {
       };
     }
 
-    const latest = warnings[0];
+    const latest = warnings[warnings.length - 1];
     return {
-      summary: `${warnings.length} koin diawasi; terakhir ${latest.pair.toUpperCase()} (${latest.label}).`,
+      summary: `${warnings.length} koin diawasi; terbaru ${latest.pair.toUpperCase()} (${latest.label}).`,
       action: `${latest.label}: ${latest.note}`,
     };
   }, [warnings]);
@@ -548,13 +550,15 @@ export default function HomePage() {
           ? 'bearish'
           : 'netral';
 
-    const summary = `Sentimen ${summaryParts.join(' / ')}; ${topAsset ? `${topAsset} paling sering disebut.` : 'pantau aset terkait.'}`;
+    const summary = `Sentimen ${summaryParts.join(' / ')}; ${
+      topAsset ? `${topAsset} paling sering disebut.` : 'pantau aset terkait.'
+    }`;
     const action =
       dominant === 'bullish'
-        ? `Incar harga rendah di ${topAsset ?? 'aset terkait'} sebelum momentum lanjut.`
+        ? `Cari diskon untuk masuk ${topAsset ?? 'aset yang ramai disebut'}; siap TP bertahap.`
         : dominant === 'bearish'
-          ? `Kurangi eksposur ${topAsset ?? 'aset rentan'}, tunggu konfirmasi balik bullish.`
-          : 'Prioritaskan aset dengan katalis jelas; hindari entry tanpa trigger.';
+          ? `Hindari entry agresif di ${topAsset ?? 'aset rentan'}, fokus proteksi posisi.`
+          : 'Tunggu katalis baru; hanya masuk pada aset dengan trigger jelas.';
 
     return { summary, action };
   }, [news]);
@@ -570,7 +574,7 @@ export default function HomePage() {
     const strongest = [...predictions].sort((a, b) => b.confidence - a.confidence)[0];
     return {
       summary: `${strongest.asset} confidence ${strongest.confidence}% (${strongest.direction}).`,
-      action: strongest.suggestedAction,
+      action: `Ikuti: ${strongest.suggestedAction}`,
     };
   }, [predictions]);
 
@@ -585,7 +589,9 @@ export default function HomePage() {
     const focus = selected ?? pumpList[0];
     return {
       summary: `${pumpList.length} koin mau pump; fokus ${focus.pair.toUpperCase()}.`,
-      action: `Buka detail ${focus.pair.toUpperCase()} dan ikuti TP 1/2/3 dengan disiplin SL ${formatPrice(focus.sl)}.`,
+      action: `Langsung cek ${focus.pair.toUpperCase()}, entry ${formatPrice(
+        focus.entry
+      )}, target TP ${formatPrice(focus.tp)}, SL ${formatPrice(focus.sl)}.`,
     };
   }, [formatPrice, pumpList, selected]);
 
@@ -662,9 +668,18 @@ export default function HomePage() {
               {menuSections.map((section) => (
                 <li key={section.id} className={`sidebar-menu-item accent-${section.id}`}>
                   <a href={`#${section.id}`} className="sidebar-menu-link">
-                    <div className="sidebar-menu-title">{section.title}</div>
-                    <div className="sidebar-menu-summary">{section.summary}</div>
-                    <div className="sidebar-menu-action">Saran: {section.action}</div>
+                    <div className="sidebar-menu-title-row">
+                      <div className="sidebar-menu-title">{section.title}</div>
+                      <span className="sidebar-chip">Aksi cepat</span>
+                    </div>
+                    <div className="sidebar-meta">
+                      <span className="sidebar-label">Kesimpulan</span>
+                      <div className="sidebar-menu-summary">{section.summary}</div>
+                    </div>
+                    <div className="sidebar-meta">
+                      <span className="sidebar-label accent">Saran</span>
+                      <div className="sidebar-menu-action">{section.action}</div>
+                    </div>
                   </a>
                 </li>
               ))}
