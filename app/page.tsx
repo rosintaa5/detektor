@@ -643,7 +643,7 @@ export default function HomePage() {
         <div>
           <h1>SINTA Crypto Detector</h1>
           <p className="subtitle">
-            Screening koin Indodax untuk swing trading (TP besar, tahan beberapa hari).
+            Detektor pump, prediksi mingguan, dan aksi cepat berbasis berita & momentum nyata.
           </p>
         </div>
         <div className="header-actions">
