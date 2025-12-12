@@ -86,18 +86,8 @@ export default function HomePage() {
     []
   );
 
-  const usdFormatter = useMemo(
-    () =>
-      new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        maximumFractionDigits: 2,
-      }),
-    []
-  );
-
   const formatPrice = useCallback((value: number) => formatter.format(value), [formatter]);
-  const formatUsd = useCallback((value: number) => usdFormatter.format(value), [usdFormatter]);
+  const formatRupiah = useCallback((value: number) => `Rp ${formatPrice(value)}`, [formatPrice]);
 
   const describeHorizonWindow = useCallback(
     (horizon: string) => {
@@ -629,55 +619,47 @@ export default function HomePage() {
     };
   }, [formatPrice, pumpList, selected]);
 
-  const usdtIdrRate = useMemo(() => {
-    const usdtPair = coins.find((c) => {
-      const pair = c.pair.toLowerCase();
-      return pair === 'usdt_idr' || pair === 'usdtidr' || pair.includes('usdt_idr');
-    });
-    return usdtPair?.last ?? null;
-  }, [coins]);
-
   const btcMarketSummary = useMemo(() => {
-    const btcUsdt =
-      coins.find((c) => {
-        const pair = c.pair.toLowerCase();
-        return pair.includes('btc_usdt') || pair.includes('btc-usdt') || pair.includes('btc_usd');
-      }) ?? null;
     const btcIdr =
       coins.find((c) => {
         const pair = c.pair.toLowerCase();
         return pair.includes('btc_idr') || pair.includes('btc-idr');
       }) ?? coins.find((c) => c.pair.toLowerCase().startsWith('btc'));
 
-    const btc = btcUsdt ?? btcIdr ?? null;
+    const usdtPair = coins.find((c) => {
+      const pair = c.pair.toLowerCase();
+      return pair === 'usdt_idr' || pair === 'usdtidr' || pair.includes('usdt_idr');
+    });
+
+    const btc = btcIdr ?? null;
     const btcPrediction = predictions.find((p) => p.asset.toUpperCase() === 'BTC');
 
     const bias = btcPrediction?.direction ?? (btc?.pricePhase === 'baru_mau_naik' ? 'bullish' : 'bearish');
     const horizon = btcPrediction?.horizon ?? '1-3 hari';
     const horizonWindow = describeHorizonWindow(horizon);
 
-    const toUsd = (value: number | null | undefined) => {
+    const toIdr = (value: number | null | undefined) => {
       if (!Number.isFinite(value ?? NaN)) return null;
-      if (btcUsdt) return value ?? null;
-      if (!usdtIdrRate || usdtIdrRate <= 0) return null;
-      return (value ?? 0) / usdtIdrRate;
+      if (btcIdr) return value ?? null;
+      if (!usdtPair?.last || usdtPair.last <= 0) return null;
+      return (value ?? 0) * usdtPair.last;
     };
 
     const supportRaw = btc ? Math.min(btc.sl, btc.entry * 0.98, btc.low) : null;
     const resistanceRaw = btc ? Math.max(btc.tp, btc.high, btc.entry * 1.03) : null;
     const lastRaw = btc?.last ?? null;
 
-    const support = toUsd(supportRaw);
-    const resistance = toUsd(resistanceRaw);
-    const last = toUsd(lastRaw);
+    const support = toIdr(supportRaw);
+    const resistance = toIdr(resistanceRaw);
+    const last = toIdr(lastRaw);
 
     let line = 'Belum ada data BTC terkini.';
     let caution = 'Tunggu data harga untuk menentukan level kunci.';
     let action = 'Pantau BTC lebih dulu sebelum eksekusi aset lain.';
 
     if (support && resistance && last) {
-      const supportLabel = formatUsd(support);
-      const resistanceLabel = formatUsd(resistance);
+      const supportLabel = formatRupiah(support);
+      const resistanceLabel = formatRupiah(resistance);
       const biasLabel = bias === 'bullish' ? 'Bull' : bias === 'bearish' ? 'Bear' : 'Netral';
 
       line = `${biasLabel} ${horizon} (${horizonWindow.untilLabel}); support ${supportLabel}, resist ${resistanceLabel}.`;
@@ -708,7 +690,7 @@ export default function HomePage() {
     }
 
     return { line, caution, action };
-  }, [coins, describeHorizonWindow, formatUsd, predictions, usdtIdrRate]);
+  }, [coins, describeHorizonWindow, formatRupiah, predictions]);
 
   const bestTodaySummary = useMemo(() => {
     if (topPicks.length === 0) {
@@ -771,22 +753,42 @@ export default function HomePage() {
 
   const pumpChartPicks = useMemo(
     () => {
-      const picks = pumpList.slice(0, 2);
-      return picks.map((coin) => {
-        const posPct = Math.max(0, Math.min(100, coin.posInRange * 100));
-        const momentum = coin.moveFromLowPct.toFixed(1);
-        const rrNote = coin.rr >= 2 ? 'RR bagus' : coin.rr >= 1.6 ? 'RR cukup' : 'RR terbatas';
-        const zone =
-          posPct >= 75 ? 'dekat high harian (awas overheat)' : posPct <= 40 ? 'masih dekat low (siap akumulasi)' : 'zona tengah';
+      const picks = topPicks.slice(0, 2);
 
-        return {
-          coin,
-          brief: `${coin.pair.toUpperCase()} ${momentum}% dari low 24j, ${rrNote}, posisi ${posPct.toFixed(1)}% (${zone}).`,
-          action: `Entry ${formatPrice(coin.entry)} · TP ${formatPrice(coin.tp)} · SL ${formatPrice(coin.sl)}.`,
-        };
-      });
+      return picks
+        .map((pick) => {
+          const coin = coins.find((c) => c.pair === pick.pair);
+          if (!coin) return null;
+
+          const posPct = Math.max(0, Math.min(100, coin.posInRange * 100));
+          const momentum = coin.moveFromLowPct.toFixed(1);
+          const rrNote = coin.rr >= 2 ? 'RR bagus' : coin.rr >= 1.6 ? 'RR cukup' : 'RR terbatas';
+          const zone =
+            posPct >= 75
+              ? 'dekat high harian (awas overheat)'
+              : posPct <= 40
+                ? 'masih dekat low (siap akumulasi)'
+                : 'zona tengah';
+          const horizonWindow = describeHorizonWindow(pick.horizon ?? '1-3 hari');
+          const biasLabel = pick.direction === 'bearish' ? 'Bear' : pick.direction === 'netral' ? 'Netral' : 'Bull';
+          const progression =
+            coin.last >= coin.tp * 0.98
+              ? 'Dekat TP utama, siapkan realisasi profit bertahap.'
+              : coin.last <= coin.entry * 0.98
+                ? 'Masih di bawah/sekitar entry, peluang akumulasi terbuka.'
+                : 'Di atas entry, lanjutkan hold dengan pengawasan volume.';
+
+          return {
+            coin,
+            brief: `${pick.asset} ${biasLabel} sampai ${horizonWindow.untilLabel}: ${momentum}% dari low 24j, ${rrNote}, posisi ${posPct.toFixed(
+              1
+            )}% (${zone}).`,
+            action: `Entry ${formatPrice(coin.entry)} · TP ${formatPrice(coin.tp)} · SL ${formatPrice(coin.sl)} · ${progression}`,
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => Boolean(item));
     },
-    [formatPrice, pumpList]
+    [coins, describeHorizonWindow, formatPrice, topPicks]
   );
 
   const menuSections = useMemo(
@@ -1128,14 +1130,14 @@ export default function HomePage() {
           <section id="pump-charts" className="section-card accent-chart pump-chart-section">
             <div className="pump-chart-head">
               <div>
-                <h3>Grafik dua koin pump teratas</h3>
-                <p className="muted">Ringkasan cepat dan visual posisi harga untuk dua kandidat pump paling update.</p>
+                <h3>Grafik dua top pick dengan analisis lengkap</h3>
+                <p className="muted">Visual + ringkasan aksi untuk dua rekomendasi terakurat yang siap dipegang sampai TP.</p>
               </div>
               <span className="badge badge-pump">Live</span>
             </div>
 
             {pumpChartPicks.length === 0 ? (
-              <div className="empty-state small">Belum ada koin pump untuk dianalisis grafiknya.</div>
+              <div className="empty-state small">Belum ada top pick untuk dianalisis grafiknya.</div>
             ) : (
               <div className="pump-chart-grid">
                 {pumpChartPicks.map((item) => (
