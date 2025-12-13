@@ -735,7 +735,7 @@ a {
   padding: 0.75rem;
 }
 
-.tv-chart-wrapper {
+.indodax-chart-wrapper {
   position: relative;
   min-height: 320px;
   background: radial-gradient(circle at 30% 20%, rgba(14, 165, 233, 0.07), transparent),
@@ -746,12 +746,18 @@ a {
   overflow: hidden;
 }
 
-.tv-chart {
-  width: 100%;
-  min-height: 320px;
+.indodax-chart-wrapper iframe {
+  border: none;
 }
 
-.tv-chart-placeholder {
+.indodax-chart {
+  width: 100%;
+  min-height: 320px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.indodax-chart-placeholder {
   position: absolute;
   inset: 0;
   display: flex;
@@ -760,6 +766,13 @@ a {
   color: #cbd5e1;
   font-weight: 600;
   background: linear-gradient(135deg, rgba(8, 47, 73, 0.55), rgba(30, 64, 175, 0.25));
+}
+
+.indodax-chart-footer {
+  margin-top: 0.4rem;
+  font-size: 0.85rem;
+  color: #a5f3fc;
+  font-weight: 600;
 }
 
 .chart-analysis {

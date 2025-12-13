@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CoinTable from '../components/CoinTable';
 import PairChart from '../components/PairChart';
-import TradingViewChart from '../components/TradingViewChart';
+import IndodaxChart from '../components/IndodaxChart';
 import type { CoinSignal } from '../lib/sintaLogic';
 
 interface ApiResponse {
@@ -1151,10 +1151,10 @@ export default function HomePage() {
           <section id="pump-charts" className="section-card accent-chart pump-chart-section">
             <div className="pump-chart-head">
               <div>
-                <h3>Grafik TradingView untuk 2 top pick pump</h3>
+                <h3>Grafik Indodax untuk 2 top pick pump</h3>
                 <p className="muted">
-                  Chart langsung + analisis super lengkap (bias, horizon, support/resist, momentum, aksi) agar eksekusi dua koin
-                  pump teratas lebih pasti.
+                  Chart langsung dari Indodax + analisis super lengkap (bias, horizon, support/resist, momentum, aksi) agar
+                  eksekusi dua koin pump teratas lebih pasti dan akurat.
                 </p>
               </div>
               <span className="badge badge-pump">Live</span>
@@ -1172,7 +1172,7 @@ export default function HomePage() {
                       <div className="chart-brief-sub">{item.action}</div>
                     </div>
 
-                    <TradingViewChart pair={item.coin.pair} />
+                    <IndodaxChart pair={item.coin.pair} />
 
                     <div className="chart-analysis">
                       <div className="chart-analysis-title">Analisis lengkap</div>
