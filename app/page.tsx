@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CoinTable from '../components/CoinTable';
 import PairChart from '../components/PairChart';
 import IndodaxChart from '../components/IndodaxChart';
@@ -11,6 +11,8 @@ interface ApiResponse {
 }
 
 type PredictionDirection = 'bullish' | 'bearish' | 'netral';
+
+const PIN_STORAGE_KEY = 'sinta-pin-authorized';
 
 interface NewsItem {
   id: string;
@@ -76,6 +78,11 @@ export default function HomePage() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [newsError, setNewsError] = useState<string | null>(null);
+  const [isAuthorized, setIsAuthorized] = useState(
+    () => typeof window !== 'undefined' && localStorage.getItem(PIN_STORAGE_KEY) === 'true'
+  );
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState<string | null>(null);
   const lastWarningStateRef = useRef<Map<string, string>>(new Map());
   const trackedPairsRef = useRef<Map<string, number>>(new Map());
 
@@ -399,7 +406,24 @@ export default function HomePage() {
     }
   }, []);
 
+  const handlePinSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+
+      if (pinInput.trim() === '111111') {
+        setIsAuthorized(true);
+        localStorage.setItem(PIN_STORAGE_KEY, 'true');
+        setPinError(null);
+      } else {
+        setPinError('PIN salah, coba lagi.');
+      }
+    },
+    [pinInput]
+  );
+
   useEffect(() => {
+    if (!isAuthorized) return undefined;
+
     fetchData();
     fetchNews();
     const interval = setInterval(() => {
@@ -415,9 +439,11 @@ export default function HomePage() {
       clearInterval(interval);
       clearInterval(newsInterval);
     };
-  }, [fetchData, fetchNews]);
+  }, [fetchData, fetchNews, isAuthorized]);
 
   useEffect(() => {
+    if (!isAuthorized) return undefined;
+
     const interval = setInterval(() => {
       const now = Date.now();
       const retentionMs = 30 * 60 * 1000;
@@ -425,12 +451,14 @@ export default function HomePage() {
     }, 60_000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [isAuthorized]);
 
   useEffect(() => {
+    if (!isAuthorized) return undefined;
+
     const interval = setInterval(() => setNowTs(Date.now()), 5_000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isAuthorized]);
 
   useEffect(() => {
     setPredictions(buildWeeklyPredictions(coins, news));
@@ -853,6 +881,36 @@ export default function HomePage() {
     ],
     [newsInsight, predictionInsight, pumpInsight, radarInsight, topPickInsight]
   );
+
+  if (!isAuthorized) {
+    return (
+      <main className="pin-gate">
+        <div className="pin-card">
+          <h1>Akses SINTA Crypto Detector</h1>
+          <p className="muted">Masukkan PIN untuk membuka dashboard.</p>
+
+          <form className="pin-form" onSubmit={handlePinSubmit}>
+            <label htmlFor="pin-input">PIN akses</label>
+            <input
+              id="pin-input"
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              autoComplete="one-time-code"
+              value={pinInput}
+              onChange={(event) => setPinInput(event.target.value)}
+              placeholder="Masukkan PIN 6 digit"
+              className={pinError ? 'has-error' : ''}
+            />
+            {pinError && <div className="error-text">{pinError}</div>}
+            <button type="submit" className="button">
+              Buka akses
+            </button>
+          </form>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="page">
