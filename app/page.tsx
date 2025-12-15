@@ -12,6 +12,8 @@ interface ApiResponse {
 
 type PredictionDirection = 'bullish' | 'bearish' | 'netral';
 
+const PIN_STORAGE_KEY = 'sinta-pin-authorized';
+
 interface NewsItem {
   id: string;
   title: string;
@@ -76,7 +78,9 @@ export default function HomePage() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [newsError, setNewsError] = useState<string | null>(null);
-  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [isAuthorized, setIsAuthorized] = useState(
+    () => typeof window !== 'undefined' && localStorage.getItem(PIN_STORAGE_KEY) === 'true'
+  );
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
   const lastWarningStateRef = useRef<Map<string, string>>(new Map());
@@ -408,6 +412,7 @@ export default function HomePage() {
 
       if (pinInput.trim() === '111111') {
         setIsAuthorized(true);
+        localStorage.setItem(PIN_STORAGE_KEY, 'true');
         setPinError(null);
       } else {
         setPinError('PIN salah, coba lagi.');
