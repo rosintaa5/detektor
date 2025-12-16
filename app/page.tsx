@@ -553,6 +553,113 @@ export default function HomePage() {
     };
   }, [formatPrice, topPicks]);
 
+  const drawdownInsight = useMemo(() => {
+    if (pumpList.length === 0) {
+      return {
+        summary: 'Belum ada posisi aktif yang perlu diselamatkan.',
+        actions: ['Tunggu sinyal mau pump berikutnya sebelum entry.'],
+        items: [] as {
+          pair: string;
+          pnlPct: number;
+          toTpPct: number;
+          toSlPct: number;
+          status: 'danger' | 'caution' | 'ok' | 'watch';
+          headline: string;
+          guidance: string;
+        }[],
+      };
+    }
+
+    const items = pumpList.map((coin) => {
+      const pnlPct = Number.isFinite(coin.last)
+        ? ((coin.last - coin.entry) / coin.entry) * 100
+        : 0;
+      const toTpPct = Number.isFinite(coin.last) && coin.last > 0
+        ? ((coin.tp - coin.last) / coin.last) * 100
+        : 0;
+      const toSlPct = Number.isFinite(coin.last) && coin.last > 0
+        ? ((coin.last - coin.sl) / coin.last) * 100
+        : 0;
+
+      let status: 'danger' | 'caution' | 'ok' | 'watch' = 'watch';
+      let headline = '';
+      let guidance = '';
+
+      const baseLine = `${coin.pair.toUpperCase()} P/L ${pnlPct.toFixed(1)}% • TP ${formatPrice(
+        coin.tp
+      )} • SL ${formatPrice(coin.sl)}`;
+
+      if (pnlPct < 0 && toSlPct <= 5) {
+        status = 'danger';
+        headline = `${baseLine} (mepet SL)`;
+        guidance = `Segera kunci rugi ringan, hindari nyangkut lebih dalam. Geser SL ke ${formatPrice(
+          coin.sl
+        )} atau keluar bertahap.`;
+      } else if (pnlPct < 0) {
+        status = 'caution';
+        headline = `${baseLine} (minus)`;
+        guidance = `Entry belum mencapai TP; cicil keluar atau tunggu retest dekat ${formatPrice(
+          coin.entry
+        )} lalu disiplin CL jika gagal tembus.`;
+      } else if (toTpPct <= 6) {
+        status = 'ok';
+        headline = `${baseLine} (dekat TP)`;
+        guidance = `Kunci profit: realisasi sebagian, geser SL ke ${formatPrice(
+          coin.entry
+        )} agar tidak balik minus.`;
+      } else {
+        status = 'watch';
+        headline = `${baseLine} (stabil)`;
+        guidance = `Tahan sambil pantau volume. Hindari tambah entry jika harga sudah ${formatPrice(
+          coin.entry * 1.04
+        )} atau lebih.`;
+      }
+
+      return { pair: coin.pair, pnlPct, toTpPct, toSlPct, status, headline, guidance };
+    });
+
+    const losers = items.filter((item) => item.pnlPct < 0);
+    const nearSl = items.filter((item) => item.status === 'danger');
+    const nearTp = items.filter((item) => item.status === 'ok');
+
+    const summaryParts = [
+      `${losers.length} posisi minus`,
+      `${nearSl.length} mepet SL`,
+      `${nearTp.length} siap TP`,
+    ];
+
+    const actions: string[] = [];
+    if (nearSl.length > 0) {
+      actions.push('Prioritas: amankan posisi yang mepet SL, jangan tunggu makin dalam.');
+    }
+    if (losers.length > 0) {
+      actions.push('Cicil keluar pada posisi minus, baru tambah entry setelah ada konfirmasi break.');
+    }
+    if (nearTp.length > 0) {
+      actions.push('Lock profit sebagian di posisi yang sudah dekat TP.');
+    }
+    if (actions.length === 0) {
+      actions.push('Semua posisi stabil, lanjut pantau volume dan range.');
+    }
+
+    const priority: Record<typeof items[number]['status'], number> = {
+      danger: 0,
+      caution: 1,
+      ok: 2,
+      watch: 3,
+    };
+
+    return {
+      summary: summaryParts.join(' • '),
+      actions,
+      items: items.sort((a, b) => {
+        const byStatus = priority[a.status] - priority[b.status];
+        if (byStatus !== 0) return byStatus;
+        return Math.abs(b.pnlPct) - Math.abs(a.pnlPct);
+      }),
+    };
+  }, [formatPrice, pumpList]);
+
   const radarInsight = useMemo(() => {
     if (warnings.length === 0) {
       return {
@@ -866,6 +973,12 @@ export default function HomePage() {
         action: topPickInsight.action,
       },
       {
+        id: 'risk',
+        title: 'Anti-Mines & Recovery',
+        summary: drawdownInsight.summary,
+        action: drawdownInsight.actions[0] ?? 'Kunci rugi kecil, hindari nyangkut.',
+      },
+      {
         id: 'radar',
         title: 'Radar Peringatan Pump',
         summary: radarInsight.summary,
@@ -896,7 +1009,7 @@ export default function HomePage() {
         action: pumpInsight.action,
       },
     ],
-    [newsInsight, predictionInsight, pumpInsight, radarInsight, topPickInsight]
+    [drawdownInsight, newsInsight, predictionInsight, pumpInsight, radarInsight, topPickInsight]
   );
 
   if (!isAuthorized) {
@@ -1062,6 +1175,50 @@ export default function HomePage() {
                 ))}
               </div>
             )}
+          </section>
+
+          <section id="risk" className="section-card accent-risk">
+            <div className="section-head">
+              <div>
+                <h3>Anti-Mines & Recovery Plan</h3>
+                <p className="muted">
+                  Cek posisi yang belum kena TP supaya tidak berubah jadi minus terlalu dalam.
+                </p>
+              </div>
+              <span className="badge badge-danger">Proteksi</span>
+            </div>
+
+            <div className="risk-grid">
+              <div className="risk-summary">
+                <div className="risk-summary-title">{drawdownInsight.summary}</div>
+                <ul className="risk-actions">
+                  {drawdownInsight.actions.map((action) => (
+                    <li key={action}>{action}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="risk-list">
+                {drawdownInsight.items.length === 0 ? (
+                  <div className="empty-state small">Belum ada posisi mau pump yang perlu dipantau.</div>
+                ) : (
+                  <ul>
+                    {drawdownInsight.items.map((item) => (
+                      <li key={item.pair} className={`risk-item risk-${item.status}`}>
+                        <div className="risk-item-head">
+                          <div className="risk-item-title">{item.pair.toUpperCase()}</div>
+                          <span className="badge badge-neutral">
+                            P/L {item.pnlPct.toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="risk-item-line">{item.headline}</div>
+                        <div className="risk-item-sub">{item.guidance}</div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
           </section>
 
           <section id="radar" className="side-section section-card accent-radar">
