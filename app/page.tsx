@@ -573,6 +573,8 @@ export default function HomePage() {
       return {
         summary: 'Belum ada berita yang mencolok.',
         action: 'Tunggu kabar kuat untuk cari harga rendah.',
+        biasLabel: 'Netral',
+        biasDetail: 'Belum ada data untuk menentukan bias sentimen.',
       };
     }
 
@@ -596,12 +598,27 @@ export default function HomePage() {
       `${sentimentCount.neutral} netral`,
     ];
 
+    const weightedScore = news.reduce((acc, item) => {
+      const weight = item.impact === 'high' ? 1.2 : item.impact === 'medium' ? 1 : 0.6;
+      const sentiment = item.sentiment === 'bullish' ? 1 : item.sentiment === 'bearish' ? -1 : 0.2;
+      return acc + sentiment * weight;
+    }, 0);
+
     const dominant =
-      sentimentCount.bullish > sentimentCount.bearish
+      weightedScore > 2
         ? 'bullish'
-        : sentimentCount.bearish > sentimentCount.bullish
+        : weightedScore < -2
           ? 'bearish'
-          : 'netral';
+          : sentimentCount.bullish > sentimentCount.bearish
+            ? 'bullish'
+            : sentimentCount.bearish > sentimentCount.bullish
+              ? 'bearish'
+              : 'netral';
+
+    const biasLabel = dominant === 'bullish' ? 'Bull' : dominant === 'bearish' ? 'Bear' : 'Netral';
+    const biasDetail = `Bias ${biasLabel} (skor ${(weightedScore >= 0 ? '+' : '') + weightedScore.toFixed(1)}): ${summaryParts.join(
+      ' / '
+    )}${topAsset ? `; ${topAsset} paling sering disebut.` : ''}`;
 
     const summary = `Sentimen ${summaryParts.join(' / ')}; ${
       topAsset ? `${topAsset} paling sering disebut.` : 'pantau aset terkait.'
@@ -613,7 +630,7 @@ export default function HomePage() {
           ? `Hindari entry agresif di ${topAsset ?? 'aset rentan'}, fokus proteksi posisi.`
           : 'Tunggu katalis baru; hanya masuk pada aset dengan trigger jelas.';
 
-    return { summary, action };
+    return { summary, action, biasLabel, biasDetail };
   }, [news]);
 
   const predictionInsight = useMemo(() => {
@@ -1077,6 +1094,12 @@ export default function HomePage() {
           <section id="news" className="side-section section-card accent-news">
             <h3>Berita & Sentimen Terbaru</h3>
             {newsError && <div className="error-box">{newsError}</div>}
+            <div className="news-bias">
+              <span className={`bias-pill bias-${newsInsight.biasLabel.toLowerCase()}`}>
+                Intinya: {newsInsight.biasLabel}
+              </span>
+              <div className="news-bias-detail">{newsInsight.biasDetail}</div>
+            </div>
             {news.length === 0 ? (
               <p className="muted">Belum ada berita yang bisa ditampilkan.</p>
             ) : (
