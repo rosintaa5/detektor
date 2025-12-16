@@ -482,6 +482,26 @@ export default function HomePage() {
     return map;
   }, [predictions]);
 
+  const newsBiasMap = useMemo(() => {
+    const map = new Map<string, { score: number; hits: number; label: string }>();
+
+    news.forEach((item) => {
+      const sentimentScore = item.sentiment === 'bullish' ? 1 : item.sentiment === 'bearish' ? -1 : 0.2;
+      const impactWeight = item.impact === 'high' ? 1.2 : item.impact === 'medium' ? 1 : 0.6;
+      const weighted = sentimentScore * impactWeight;
+
+      item.assets.forEach((asset) => {
+        const key = asset.toUpperCase();
+        const current = map.get(key) ?? { score: 0, hits: 0, label: 'Netral' };
+        const nextScore = current.score + weighted;
+        const label = nextScore >= 1.2 ? 'Bull' : nextScore <= -0.8 ? 'Bear' : 'Netral';
+        map.set(key, { score: nextScore, hits: current.hits + 1, label });
+      });
+    });
+
+    return map;
+  }, [news]);
+
   const topPicks: TopPick[] = useMemo(() => {
     if (!coins.length) return [];
 
@@ -772,6 +792,69 @@ export default function HomePage() {
     };
   }, [formatPrice, pumpList, selected]);
 
+  const pumpConviction = useMemo(() => {
+    if (pumpList.length === 0) {
+      return {
+        summary: 'Belum ada kandidat pump yang bisa dihitung keyakinannya.',
+        items: [] as {
+          pair: string;
+          asset: string;
+          score: number;
+          grade: string;
+          takeaway: string;
+          reasons: string[];
+        }[],
+      };
+    }
+
+    const items = pumpList.map((coin) => {
+      const asset = normalizeAssetFromPair(coin.pair);
+      const pred = predictionMap.get(asset);
+      const newsBias = newsBiasMap.get(asset);
+
+      const volumeScore = Math.min(25, Math.log10(Math.max(coin.volIdr, 1)) * 4.2);
+      const momentumScore = Math.min(18, Math.max(0, coin.moveFromLowPct - 4));
+      const rangeScore = coin.posInRange >= 0.35 && coin.posInRange <= 0.72 ? 15 : coin.posInRange > 0.85 ? 4 : 10;
+      const rrScore = Math.max(0, Math.min(18, (coin.rr - 1) * 9));
+      const pumpBonus = coin.pumpStatus === 'mau_pump' ? 12 : 0;
+      const predScore = pred
+        ? pred.direction === 'bullish'
+          ? Math.min(16, pred.confidence * 0.18)
+          : pred.direction === 'netral'
+            ? Math.min(6, pred.confidence * 0.08)
+            : -14
+        : 0;
+      const newsScore = newsBias ? Math.min(10, newsBias.score * 2 + newsBias.hits * 0.6) : 0;
+
+      const score = Math.round(volumeScore + momentumScore + rangeScore + rrScore + pumpBonus + predScore + newsScore);
+      const grade = score >= 82 ? 'A (Sangat yakin)' : score >= 68 ? 'B (Yakin)' : score >= 55 ? 'C (Perlu konfirmasi)' : 'D (Hindari kejar)';
+
+      const biasLabel = pred?.direction === 'bearish' ? 'bias prediksi lemah' : pred?.direction ? `bias ${pred.direction}` : 'butuh bias';
+      const newsLabel = newsBias ? `sentimen berita ${newsBias.label} (${newsBias.hits} hit)` : 'sentimen belum ada';
+      const takeaway = score >= 68
+        ? 'Layak dieksekusi duluan, disiplin entry & SL.'
+        : score >= 55
+          ? 'Tunggu konfirmasi volume / candle sebelum masuk.'
+          : 'Jangan kejar dulu, cari kandidat lain.';
+
+      const reasons = [
+        `Volume ${formatPrice(coin.volIdr)} IDR · ${newsLabel}.`,
+        `Momentum ${coin.moveFromLowPct.toFixed(1)}% dari low; posisi ${Math.round(coin.posInRange * 100)}% dari rentang 24j (${rangeScore >= 15 ? 'ideal' : 'perlu waspada'}).`,
+        `RR ${coin.rr.toFixed(2)} · ${biasLabel}.`,
+      ];
+
+      return { pair: coin.pair, asset, score, grade, takeaway, reasons };
+    });
+
+    const sorted = items.sort((a, b) => b.score - a.score);
+    const leaders = sorted.slice(0, 2).map((item) => `${item.asset} ${item.grade}`);
+
+    return {
+      summary: `Keyakinan tertinggi: ${leaders.join(', ')}.`,
+      items: sorted,
+    };
+  }, [formatPrice, newsBiasMap, normalizeAssetFromPair, predictionMap, pumpList]);
+
   const btcMarketSummary = useMemo(() => {
     const btcIdr =
       coins.find((c) => {
@@ -973,6 +1056,12 @@ export default function HomePage() {
         action: topPickInsight.action,
       },
       {
+        id: 'conviction',
+        title: 'Keyakinan Mau Pump',
+        summary: pumpConviction.summary,
+        action: 'Eksekusi kandidat dengan grade A/B duluan.',
+      },
+      {
         id: 'risk',
         title: 'Anti-Mines & Recovery',
         summary: drawdownInsight.summary,
@@ -1009,7 +1098,7 @@ export default function HomePage() {
         action: pumpInsight.action,
       },
     ],
-    [drawdownInsight, newsInsight, predictionInsight, pumpInsight, radarInsight, topPickInsight]
+    [drawdownInsight, newsInsight, predictionInsight, pumpConviction.summary, pumpInsight, radarInsight, topPickInsight]
   );
 
   if (!isAuthorized) {
@@ -1171,6 +1260,46 @@ export default function HomePage() {
                     <div className="priority-body">{pick.rationale}</div>
                     <div className="priority-action">{pick.suggestedAction}</div>
                     <div className="priority-footer">Horizon: {pick.horizon}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section id="conviction" className="section-card accent-conviction">
+            <div className="section-head">
+              <div>
+                <h3>Keyakinan Koin Mau Pump</h3>
+                <p className="muted">
+                  Skor gabungan volume, momentum, RR, bias prediksi, dan sentimen berita supaya entry makin yakin tidak salah koin.
+                </p>
+              </div>
+              <span className="badge badge-strong">Skor & Grade</span>
+            </div>
+
+            {pumpConviction.items.length === 0 ? (
+              <div className="empty-state small">Belum ada koin mau pump yang siap dinilai.</div>
+            ) : (
+              <div className="conviction-grid">
+                {pumpConviction.items.map((item) => (
+                  <div key={item.pair} className="conviction-card">
+                    <div className="conviction-head">
+                      <div>
+                        <div className="conviction-asset">{item.asset}</div>
+                        <div className="conviction-pair">{item.pair.toUpperCase()}</div>
+                      </div>
+                      <div className="conviction-score-block">
+                        <div className="conviction-score">{item.score}</div>
+                        <div className="conviction-grade">{item.grade}</div>
+                      </div>
+                    </div>
+
+                    <div className="conviction-takeaway">{item.takeaway}</div>
+                    <ul className="conviction-reasons">
+                      {item.reasons.map((reason) => (
+                        <li key={reason}>{reason}</li>
+                      ))}
+                    </ul>
                   </div>
                 ))}
               </div>
