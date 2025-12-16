@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CoinTable from '../components/CoinTable';
 import PairChart from '../components/PairChart';
 import IndodaxChart from '../components/IndodaxChart';
@@ -11,6 +11,8 @@ interface ApiResponse {
 }
 
 type PredictionDirection = 'bullish' | 'bearish' | 'netral';
+
+const PIN_STORAGE_KEY = 'sinta-pin-authorized';
 
 interface NewsItem {
   id: string;
@@ -76,6 +78,11 @@ export default function HomePage() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [newsError, setNewsError] = useState<string | null>(null);
+  const [isAuthorized, setIsAuthorized] = useState(
+    () => typeof window !== 'undefined' && localStorage.getItem(PIN_STORAGE_KEY) === 'true'
+  );
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState<string | null>(null);
   const lastWarningStateRef = useRef<Map<string, string>>(new Map());
   const trackedPairsRef = useRef<Map<string, number>>(new Map());
 
@@ -399,7 +406,24 @@ export default function HomePage() {
     }
   }, []);
 
+  const handlePinSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+
+      if (pinInput.trim() === '111111') {
+        setIsAuthorized(true);
+        localStorage.setItem(PIN_STORAGE_KEY, 'true');
+        setPinError(null);
+      } else {
+        setPinError('PIN salah, coba lagi.');
+      }
+    },
+    [pinInput]
+  );
+
   useEffect(() => {
+    if (!isAuthorized) return undefined;
+
     fetchData();
     fetchNews();
     const interval = setInterval(() => {
@@ -415,9 +439,11 @@ export default function HomePage() {
       clearInterval(interval);
       clearInterval(newsInterval);
     };
-  }, [fetchData, fetchNews]);
+  }, [fetchData, fetchNews, isAuthorized]);
 
   useEffect(() => {
+    if (!isAuthorized) return undefined;
+
     const interval = setInterval(() => {
       const now = Date.now();
       const retentionMs = 30 * 60 * 1000;
@@ -425,12 +451,14 @@ export default function HomePage() {
     }, 60_000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [isAuthorized]);
 
   useEffect(() => {
+    if (!isAuthorized) return undefined;
+
     const interval = setInterval(() => setNowTs(Date.now()), 5_000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isAuthorized]);
 
   useEffect(() => {
     setPredictions(buildWeeklyPredictions(coins, news));
@@ -506,6 +534,55 @@ export default function HomePage() {
 
   const pumpList = coins.filter((c) => c.pumpStatus === 'mau_pump');
 
+  const pumpMathList = useMemo(() => {
+    if (!pumpList.length) return [];
+
+    return pumpList
+      .map((coin) => {
+        const upsidePct = Number.isFinite(coin.last) && coin.last > 0 ? ((coin.tp - coin.last) / coin.last) * 100 : 0;
+        const downsidePct = Number.isFinite(coin.last) && coin.last > 0 ? ((coin.last - coin.sl) / coin.last) * 100 : 0;
+        const rrLive = downsidePct > 0 ? upsidePct / downsidePct : coin.rr;
+        const entryGapPct = Number.isFinite(coin.last) && coin.last > 0 ? ((coin.entry - coin.last) / coin.last) * 100 : 0;
+        const heatPct = Math.max(0, Math.min(100, coin.posInRange * 100));
+        const momentumPct = Math.max(0, coin.moveFromLowPct);
+        const volumeScore = Math.max(18, Math.min(40, Math.log10(Math.max(coin.volIdr, 1)) * 12 - 36));
+        const rrScore = Math.min(28, Math.max(0, rrLive * 9));
+        const setupScore = Math.min(18, Math.max(0, 18 - Math.abs(heatPct - 58) * 0.25));
+        const momentumScore = Math.min(24, Math.max(0, momentumPct * 0.7));
+        const score = Math.round(volumeScore + rrScore + setupScore + momentumScore);
+
+        let bias: 'bull' | 'neutral' | 'risk' = 'bull';
+        if (rrLive < 1.4 || upsidePct < 6) {
+          bias = 'risk';
+        } else if (score < 55) {
+          bias = 'neutral';
+        }
+
+        const actionLine =
+          bias === 'bull'
+            ? `Peluang ${upsidePct.toFixed(1)}% ke TP dengan RR live ${rrLive.toFixed(2)}; entry ${
+                entryGapPct > 1 ? 'masih diskon' : 'sudah jalan'
+              } ${entryGapPct.toFixed(1)}%.`
+            : bias === 'neutral'
+              ? `Setup cukup, tapi butuh konfirmasi volume tambahan. Upside ${upsidePct.toFixed(1)}%, RR ${rrLive.toFixed(2)}.`
+              : `Risiko > reward (${rrLive.toFixed(2)}). Lebih aman tunggu re-entry dekat ${formatPrice(coin.entry)}.`;
+
+        return {
+          coin,
+          upsidePct,
+          downsidePct,
+          rrLive,
+          entryGapPct,
+          heatPct,
+          momentumPct,
+          score,
+          bias,
+          actionLine,
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+  }, [formatPrice, pumpList]);
+
   const topPickInsight = useMemo(() => {
     if (topPicks.length === 0) {
       return {
@@ -524,6 +601,113 @@ export default function HomePage() {
       )}; disiplin SL ${formatPrice(leader.sl)}.`,
     };
   }, [formatPrice, topPicks]);
+
+  const drawdownInsight = useMemo(() => {
+    if (pumpList.length === 0) {
+      return {
+        summary: 'Belum ada posisi aktif yang perlu diselamatkan.',
+        actions: ['Tunggu sinyal mau pump berikutnya sebelum entry.'],
+        items: [] as {
+          pair: string;
+          pnlPct: number;
+          toTpPct: number;
+          toSlPct: number;
+          status: 'danger' | 'caution' | 'ok' | 'watch';
+          headline: string;
+          guidance: string;
+        }[],
+      };
+    }
+
+    const items = pumpList.map((coin) => {
+      const pnlPct = Number.isFinite(coin.last)
+        ? ((coin.last - coin.entry) / coin.entry) * 100
+        : 0;
+      const toTpPct = Number.isFinite(coin.last) && coin.last > 0
+        ? ((coin.tp - coin.last) / coin.last) * 100
+        : 0;
+      const toSlPct = Number.isFinite(coin.last) && coin.last > 0
+        ? ((coin.last - coin.sl) / coin.last) * 100
+        : 0;
+
+      let status: 'danger' | 'caution' | 'ok' | 'watch' = 'watch';
+      let headline = '';
+      let guidance = '';
+
+      const baseLine = `${coin.pair.toUpperCase()} P/L ${pnlPct.toFixed(1)}% • TP ${formatPrice(
+        coin.tp
+      )} • SL ${formatPrice(coin.sl)}`;
+
+      if (pnlPct < 0 && toSlPct <= 5) {
+        status = 'danger';
+        headline = `${baseLine} (mepet SL)`;
+        guidance = `Segera kunci rugi ringan, hindari nyangkut lebih dalam. Geser SL ke ${formatPrice(
+          coin.sl
+        )} atau keluar bertahap.`;
+      } else if (pnlPct < 0) {
+        status = 'caution';
+        headline = `${baseLine} (minus)`;
+        guidance = `Entry belum mencapai TP; cicil keluar atau tunggu retest dekat ${formatPrice(
+          coin.entry
+        )} lalu disiplin CL jika gagal tembus.`;
+      } else if (toTpPct <= 6) {
+        status = 'ok';
+        headline = `${baseLine} (dekat TP)`;
+        guidance = `Kunci profit: realisasi sebagian, geser SL ke ${formatPrice(
+          coin.entry
+        )} agar tidak balik minus.`;
+      } else {
+        status = 'watch';
+        headline = `${baseLine} (stabil)`;
+        guidance = `Tahan sambil pantau volume. Hindari tambah entry jika harga sudah ${formatPrice(
+          coin.entry * 1.04
+        )} atau lebih.`;
+      }
+
+      return { pair: coin.pair, pnlPct, toTpPct, toSlPct, status, headline, guidance };
+    });
+
+    const losers = items.filter((item) => item.pnlPct < 0);
+    const nearSl = items.filter((item) => item.status === 'danger');
+    const nearTp = items.filter((item) => item.status === 'ok');
+
+    const summaryParts = [
+      `${losers.length} posisi minus`,
+      `${nearSl.length} mepet SL`,
+      `${nearTp.length} siap TP`,
+    ];
+
+    const actions: string[] = [];
+    if (nearSl.length > 0) {
+      actions.push('Prioritas: amankan posisi yang mepet SL, jangan tunggu makin dalam.');
+    }
+    if (losers.length > 0) {
+      actions.push('Cicil keluar pada posisi minus, baru tambah entry setelah ada konfirmasi break.');
+    }
+    if (nearTp.length > 0) {
+      actions.push('Lock profit sebagian di posisi yang sudah dekat TP.');
+    }
+    if (actions.length === 0) {
+      actions.push('Semua posisi stabil, lanjut pantau volume dan range.');
+    }
+
+    const priority: Record<typeof items[number]['status'], number> = {
+      danger: 0,
+      caution: 1,
+      ok: 2,
+      watch: 3,
+    };
+
+    return {
+      summary: summaryParts.join(' • '),
+      actions,
+      items: items.sort((a, b) => {
+        const byStatus = priority[a.status] - priority[b.status];
+        if (byStatus !== 0) return byStatus;
+        return Math.abs(b.pnlPct) - Math.abs(a.pnlPct);
+      }),
+    };
+  }, [formatPrice, pumpList]);
 
   const radarInsight = useMemo(() => {
     if (warnings.length === 0) {
@@ -545,6 +729,8 @@ export default function HomePage() {
       return {
         summary: 'Belum ada berita yang mencolok.',
         action: 'Tunggu kabar kuat untuk cari harga rendah.',
+        biasLabel: 'Netral',
+        biasDetail: 'Belum ada data untuk menentukan bias sentimen.',
       };
     }
 
@@ -568,12 +754,27 @@ export default function HomePage() {
       `${sentimentCount.neutral} netral`,
     ];
 
+    const weightedScore = news.reduce((acc, item) => {
+      const weight = item.impact === 'high' ? 1.2 : item.impact === 'medium' ? 1 : 0.6;
+      const sentiment = item.sentiment === 'bullish' ? 1 : item.sentiment === 'bearish' ? -1 : 0.2;
+      return acc + sentiment * weight;
+    }, 0);
+
     const dominant =
-      sentimentCount.bullish > sentimentCount.bearish
+      weightedScore > 2
         ? 'bullish'
-        : sentimentCount.bearish > sentimentCount.bullish
+        : weightedScore < -2
           ? 'bearish'
-          : 'netral';
+          : sentimentCount.bullish > sentimentCount.bearish
+            ? 'bullish'
+            : sentimentCount.bearish > sentimentCount.bullish
+              ? 'bearish'
+              : 'netral';
+
+    const biasLabel = dominant === 'bullish' ? 'Bull' : dominant === 'bearish' ? 'Bear' : 'Netral';
+    const biasDetail = `Bias ${biasLabel} (skor ${(weightedScore >= 0 ? '+' : '') + weightedScore.toFixed(1)}): ${summaryParts.join(
+      ' / '
+    )}${topAsset ? `; ${topAsset} paling sering disebut.` : ''}`;
 
     const summary = `Sentimen ${summaryParts.join(' / ')}; ${
       topAsset ? `${topAsset} paling sering disebut.` : 'pantau aset terkait.'
@@ -585,7 +786,7 @@ export default function HomePage() {
           ? `Hindari entry agresif di ${topAsset ?? 'aset rentan'}, fokus proteksi posisi.`
           : 'Tunggu katalis baru; hanya masuk pada aset dengan trigger jelas.';
 
-    return { summary, action };
+    return { summary, action, biasLabel, biasDetail };
   }, [news]);
 
   const predictionInsight = useMemo(() => {
@@ -619,6 +820,23 @@ export default function HomePage() {
       )}, target TP ${formatPrice(focus.tp)}, SL ${formatPrice(focus.sl)}.`,
     };
   }, [formatPrice, pumpList, selected]);
+
+  const pumpMathInsight = useMemo(() => {
+    if (pumpMathList.length === 0) {
+      return {
+        summary: 'Belum ada kalkulasi detil karena tidak ada koin mau pump.',
+        action: 'Tunggu sinyal mau pump untuk melihat RR live dan jarak TP/SL.',
+      };
+    }
+
+    const leader = pumpMathList[0];
+    return {
+      summary: `${leader.coin.pair.toUpperCase()} RR live ${leader.rrLive.toFixed(2)}; upside ${
+        leader.upsidePct.toFixed(1)
+      }% vs risiko ${leader.downsidePct.toFixed(1)}%.`,
+      action: leader.actionLine,
+    };
+  }, [pumpMathList]);
 
   const btcMarketSummary = useMemo(() => {
     const btcIdr =
@@ -821,6 +1039,18 @@ export default function HomePage() {
         action: topPickInsight.action,
       },
       {
+        id: 'risk',
+        title: 'Anti-Mines & Recovery',
+        summary: drawdownInsight.summary,
+        action: drawdownInsight.actions[0] ?? 'Kunci rugi kecil, hindari nyangkut.',
+      },
+      {
+        id: 'pump-math',
+        title: 'Lab Hitung Mau Pump',
+        summary: pumpMathInsight.summary,
+        action: pumpMathInsight.action,
+      },
+      {
         id: 'radar',
         title: 'Radar Peringatan Pump',
         summary: radarInsight.summary,
@@ -851,8 +1081,38 @@ export default function HomePage() {
         action: pumpInsight.action,
       },
     ],
-    [newsInsight, predictionInsight, pumpInsight, radarInsight, topPickInsight]
+    [drawdownInsight, newsInsight, predictionInsight, pumpInsight, pumpMathInsight, radarInsight, topPickInsight]
   );
+
+  if (!isAuthorized) {
+    return (
+      <main className="pin-gate">
+        <div className="pin-card">
+          <h1>Akses SINTA Crypto Detector</h1>
+          <p className="muted">Masukkan PIN untuk membuka dashboard.</p>
+
+          <form className="pin-form" onSubmit={handlePinSubmit}>
+            <label htmlFor="pin-input">PIN akses</label>
+            <input
+              id="pin-input"
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              autoComplete="one-time-code"
+              value={pinInput}
+              onChange={(event) => setPinInput(event.target.value)}
+              placeholder="Masukkan PIN 6 digit"
+              className={pinError ? 'has-error' : ''}
+            />
+            {pinError && <div className="error-text">{pinError}</div>}
+            <button type="submit" className="button">
+              Buka akses
+            </button>
+          </form>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="page">
@@ -989,6 +1249,115 @@ export default function HomePage() {
             )}
           </section>
 
+          <section id="risk" className="section-card accent-risk">
+            <div className="section-head">
+              <div>
+                <h3>Anti-Mines & Recovery Plan</h3>
+                <p className="muted">
+                  Cek posisi yang belum kena TP supaya tidak berubah jadi minus terlalu dalam.
+                </p>
+              </div>
+              <span className="badge badge-danger">Proteksi</span>
+            </div>
+
+            <div className="risk-grid">
+              <div className="risk-summary">
+                <div className="risk-summary-title">{drawdownInsight.summary}</div>
+                <ul className="risk-actions">
+                  {drawdownInsight.actions.map((action) => (
+                    <li key={action}>{action}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="risk-list">
+                {drawdownInsight.items.length === 0 ? (
+                  <div className="empty-state small">Belum ada posisi mau pump yang perlu dipantau.</div>
+                ) : (
+                  <ul>
+                    {drawdownInsight.items.map((item) => (
+                      <li key={item.pair} className={`risk-item risk-${item.status}`}>
+                        <div className="risk-item-head">
+                          <div className="risk-item-title">{item.pair.toUpperCase()}</div>
+                          <span className="badge badge-neutral">
+                            P/L {item.pnlPct.toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="risk-item-line">{item.headline}</div>
+                        <div className="risk-item-sub">{item.guidance}</div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section id="pump-math" className="section-card accent-math">
+            <div className="section-head">
+              <div>
+                <h3>Lab Hitung Mau Pump</h3>
+                <p className="muted">
+                  Kalkulasi langsung RR live, jarak TP/SL, gap ke entry, dan suhu range harian supaya eksekusi makin yakin.
+                </p>
+              </div>
+              <span className="badge badge-strong">Angka real-time</span>
+            </div>
+
+            {pumpMathList.length === 0 ? (
+              <div className="empty-state small">Menunggu sinyal mau pump untuk dihitung.</div>
+            ) : (
+              <div className="pump-math-grid">
+                {pumpMathList.slice(0, 4).map((item) => (
+                  <div key={item.coin.pair} className={`pump-math-card bias-${item.bias}`}>
+                    <div className="pump-math-head">
+                      <div>
+                        <div className="pump-math-pair">{item.coin.pair.toUpperCase()}</div>
+                        <div className="pump-math-sub">Volume {formatter.format(item.coin.volIdr)} IDR</div>
+                      </div>
+                      <div className="pump-math-score">Score {item.score}</div>
+                    </div>
+
+                    <div className="pump-math-metrics">
+                      <div>
+                        <div className="metric-label">Upside → TP</div>
+                        <div className="metric-value">{item.upsidePct.toFixed(1)}%</div>
+                        <div className="metric-sub">Jarak dari harga last ke TP</div>
+                      </div>
+                      <div>
+                        <div className="metric-label">Cushion → SL</div>
+                        <div className="metric-value">{item.downsidePct.toFixed(1)}%</div>
+                        <div className="metric-sub">Turun sebelum kena SL</div>
+                      </div>
+                      <div>
+                        <div className="metric-label">RR live</div>
+                        <div className="metric-value">{item.rrLive.toFixed(2)}x</div>
+                        <div className="metric-sub">Banding upside vs downside saat ini</div>
+                      </div>
+                      <div>
+                        <div className="metric-label">Gap ke Entry</div>
+                        <div className="metric-value">{item.entryGapPct.toFixed(1)}%</div>
+                        <div className="metric-sub">Minus = masih diskon</div>
+                      </div>
+                      <div>
+                        <div className="metric-label">Heat 24j</div>
+                        <div className="metric-value">{item.heatPct.toFixed(1)}%</div>
+                        <div className="metric-sub">Posisi di rentang low-high</div>
+                      </div>
+                      <div>
+                        <div className="metric-label">Momentum</div>
+                        <div className="metric-value">{item.momentumPct.toFixed(1)}%</div>
+                        <div className="metric-sub">Kenaikan dari low 24j</div>
+                      </div>
+                    </div>
+
+                    <div className="pump-math-action">{item.actionLine}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
           <section id="radar" className="side-section section-card accent-radar">
             <h3>Radar Peringatan Pump</h3>
             {warnings.length === 0 ? (
@@ -1019,6 +1388,12 @@ export default function HomePage() {
           <section id="news" className="side-section section-card accent-news">
             <h3>Berita & Sentimen Terbaru</h3>
             {newsError && <div className="error-box">{newsError}</div>}
+            <div className="news-bias">
+              <span className={`bias-pill bias-${newsInsight.biasLabel.toLowerCase()}`}>
+                Intinya: {newsInsight.biasLabel}
+              </span>
+              <div className="news-bias-detail">{newsInsight.biasDetail}</div>
+            </div>
             {news.length === 0 ? (
               <p className="muted">Belum ada berita yang bisa ditampilkan.</p>
             ) : (
