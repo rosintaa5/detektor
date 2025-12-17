@@ -97,6 +97,16 @@ export default function HomePage() {
   const formatPrice = useCallback((value: number) => formatter.format(value), [formatter]);
   const formatRupiah = useCallback((value: number) => `Rp ${formatPrice(value)}`, [formatPrice]);
 
+  const lastUpdatedLabel = useMemo(
+    () =>
+      new Intl.DateTimeFormat('id-ID', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: 'Asia/Jakarta',
+      }).format(nowTs),
+    [nowTs]
+  );
+
   const describeHorizonWindow = useCallback(
     (horizon: string) => {
       const matches = [...horizon.matchAll(/(\d+)\s*(hari|minggu)/gi)];
@@ -534,6 +544,44 @@ export default function HomePage() {
 
   const pumpList = coins.filter((c) => c.pumpStatus === 'mau_pump');
 
+  const btcContext = useMemo(() => {
+    const btcIdr =
+      coins.find((c) => {
+        const pair = c.pair.toLowerCase();
+        return pair.includes('btc_idr') || pair.includes('btc-idr');
+      }) ?? coins.find((c) => c.pair.toLowerCase().startsWith('btc'));
+
+    const usdtPair = coins.find((c) => {
+      const pair = c.pair.toLowerCase();
+      return pair === 'usdt_idr' || pair === 'usdtidr' || pair.includes('usdt_idr');
+    });
+
+    const btc = btcIdr ?? null;
+    const btcPrediction = predictions.find((p) => p.asset.toUpperCase() === 'BTC');
+
+    const bias = btcPrediction?.direction ?? (btc?.pricePhase === 'baru_mau_naik' ? 'bullish' : 'bearish');
+    const horizon = btcPrediction?.horizon ?? '1-3 hari';
+    const horizonWindow = describeHorizonWindow(horizon);
+
+    const toIdr = (value: number | null | undefined) => {
+      if (!Number.isFinite(value ?? NaN)) return null;
+      if (btcIdr) return value ?? null;
+      if (!usdtPair?.last || usdtPair.last <= 0) return null;
+      return (value ?? 0) * usdtPair.last;
+    };
+
+    const supportRaw = btc ? Math.min(btc.sl, btc.entry * 0.98, btc.low) : null;
+    const resistanceRaw = btc ? Math.max(btc.tp, btc.high, btc.entry * 1.03) : null;
+    const lastRaw = btc?.last ?? null;
+
+    const support = toIdr(supportRaw);
+    const resistance = toIdr(resistanceRaw);
+    const last = toIdr(lastRaw);
+    const coilPct = support && resistance ? ((resistance - support) / support) * 100 : null;
+
+    return { btc, bias, horizon, horizonWindow, support, resistance, last, coilPct };
+  }, [coins, describeHorizonWindow, predictions]);
+
   const pumpMathList = useMemo(() => {
     if (!pumpList.length) return [];
 
@@ -550,6 +598,28 @@ export default function HomePage() {
         const setupScore = Math.min(18, Math.max(0, 18 - Math.abs(heatPct - 58) * 0.25));
         const momentumScore = Math.min(24, Math.max(0, momentumPct * 0.7));
         const score = Math.round(volumeScore + rrScore + setupScore + momentumScore);
+
+        const coilPct = Math.max(0, Math.min(25, ((coin.high - coin.low) / Math.max(coin.low, 1)) * 100));
+        const sidewayLabel = coilPct <= 6 ? 'Sideway ketat' : coilPct <= 12 ? 'Sideway lebar' : 'Range lebar';
+        const sidewayNote =
+          coilPct <= 6
+            ? 'Sudah sideway lama, siap meledak jika volume masuk'
+            : coilPct <= 12
+              ? 'Sideway cukup lama, butuh trigger konfirmasi'
+              : 'Range lebar, momentum sering bolak-balik';
+
+        const priorSpike = Math.max(momentumPct - 5, 0);
+        const historyNote = priorSpike >= 18
+          ? `Sempat naik ${priorSpike.toFixed(1)}% setelah sideway`
+          : `Kenaikan kecil ${priorSpike.toFixed(1)}%, peluang lanjut terbuka`;
+
+        const midLine = (coin.entry + coin.tp) / 2;
+        const crossedMid = Number.isFinite(coin.last) && coin.last >= midLine;
+        const structureNote = crossedMid
+          ? 'Harga sudah cross garis tengah menuju TP'
+          : 'Belum cross garis tengah, tunggu trigger';
+
+        const btcDrag = btcContext.bias === 'bearish' ? 'Terpengaruh bias BTC turun, kurangi lot' : 'Didukung bias BTC/upside';
 
         const liquidityLabel =
           coin.volIdr >= 5_000_000_000
@@ -598,6 +668,7 @@ export default function HomePage() {
               : 'RR rendah, dahulukan proteksi';
 
         const riskNote = `${bufferNote} • ${entryNote}`;
+        const confidencePct = Math.min(99, Math.max(45, Math.round(score * 0.9 + (btcContext.bias === 'bullish' ? 4 : -6))));
 
         return {
           coin,
@@ -614,10 +685,16 @@ export default function HomePage() {
           convictionLabel,
           convictionNote,
           riskNote,
+          sidewayLabel,
+          sidewayNote,
+          structureNote,
+          btcDrag,
+          historyNote,
+          confidencePct,
         };
       })
       .sort((a, b) => b.score - a.score);
-  }, [formatPrice, pumpList]);
+  }, [btcContext.bias, formatPrice, pumpList]);
 
   const topPickInsight = useMemo(() => {
     if (topPicks.length === 0) {
@@ -875,38 +952,7 @@ export default function HomePage() {
   }, [pumpMathList]);
 
   const btcMarketSummary = useMemo(() => {
-    const btcIdr =
-      coins.find((c) => {
-        const pair = c.pair.toLowerCase();
-        return pair.includes('btc_idr') || pair.includes('btc-idr');
-      }) ?? coins.find((c) => c.pair.toLowerCase().startsWith('btc'));
-
-    const usdtPair = coins.find((c) => {
-      const pair = c.pair.toLowerCase();
-      return pair === 'usdt_idr' || pair === 'usdtidr' || pair.includes('usdt_idr');
-    });
-
-    const btc = btcIdr ?? null;
-    const btcPrediction = predictions.find((p) => p.asset.toUpperCase() === 'BTC');
-
-    const bias = btcPrediction?.direction ?? (btc?.pricePhase === 'baru_mau_naik' ? 'bullish' : 'bearish');
-    const horizon = btcPrediction?.horizon ?? '1-3 hari';
-    const horizonWindow = describeHorizonWindow(horizon);
-
-    const toIdr = (value: number | null | undefined) => {
-      if (!Number.isFinite(value ?? NaN)) return null;
-      if (btcIdr) return value ?? null;
-      if (!usdtPair?.last || usdtPair.last <= 0) return null;
-      return (value ?? 0) * usdtPair.last;
-    };
-
-    const supportRaw = btc ? Math.min(btc.sl, btc.entry * 0.98, btc.low) : null;
-    const resistanceRaw = btc ? Math.max(btc.tp, btc.high, btc.entry * 1.03) : null;
-    const lastRaw = btc?.last ?? null;
-
-    const support = toIdr(supportRaw);
-    const resistance = toIdr(resistanceRaw);
-    const last = toIdr(lastRaw);
+    const { bias, horizon, horizonWindow, support, resistance, last } = btcContext;
 
     let line = 'Belum ada data BTC terkini.';
     let caution = 'Tunggu data harga untuk menentukan level kunci.';
@@ -945,7 +991,7 @@ export default function HomePage() {
     }
 
     return { line, caution, action };
-  }, [coins, describeHorizonWindow, formatRupiah, predictions]);
+  }, [btcContext, formatRupiah]);
 
   const bestTodaySummary = useMemo(() => {
     if (topPicks.length === 0) {
@@ -1334,7 +1380,8 @@ export default function HomePage() {
               <div>
                 <h3>Lab Hitung Mau Pump</h3>
                 <p className="muted">
-                  Kalkulasi langsung RR live, jarak TP/SL, gap ke entry, dan suhu range harian supaya eksekusi makin yakin.
+                  Kalkulasi langsung RR live, jarak TP/SL, gap ke entry, suhu range, historis sideway, efek BTC, dan grafik mini
+                  upside/downside supaya eksekusi makin yakin.
                 </p>
               </div>
               <span className="badge badge-strong">Angka real-time</span>
@@ -1402,6 +1449,47 @@ export default function HomePage() {
                         <div className="diag-label">Penjagaan</div>
                         <div className="diag-value">{item.riskNote}</div>
                         <div className="diag-sub">Pastikan SL siap dan hindari FOMO</div>
+                      </div>
+                    </div>
+
+                    <div className="pump-math-history">
+                      <div className="history-block">
+                        <div className="history-label">Sideway & histori</div>
+                        <div className="history-value">{item.sidewayLabel}</div>
+                        <div className="history-sub">{item.sidewayNote}</div>
+                      </div>
+                      <div className="history-block">
+                        <div className="history-label">Break & garis</div>
+                        <div className="history-value">{item.structureNote}</div>
+                        <div className="history-sub">{item.historyNote}</div>
+                      </div>
+                      <div className="history-block">
+                        <div className="history-label">Efek BTC</div>
+                        <div className="history-value">{item.btcDrag}</div>
+                        <div className="history-sub">Keyakinan {item.confidencePct}%</div>
+                      </div>
+                    </div>
+
+                    <div className="pump-math-spark">
+                      <div className="spark-label">Grafik mini: upside vs downside live</div>
+                      <div className="spark-track">
+                        <div className="spark-bar">
+                          <span
+                            className="spark-up"
+                            style={{ width: `${Math.min(100, Math.max(0, item.upsidePct))}%` }}
+                          />
+                        </div>
+                        <div className="spark-bar">
+                          <span
+                            className="spark-down"
+                            style={{ width: `${Math.min(100, Math.max(0, item.downsidePct * 2))}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div className="spark-meta">
+                        Upside {item.upsidePct.toFixed(1)}% • Downside {item.downsidePct.toFixed(1)}% • Heat {item.heatPct.toFixed(
+                          1
+                        )}% • Momentum {item.momentumPct.toFixed(1)}%
                       </div>
                     </div>
 
@@ -1619,6 +1707,10 @@ export default function HomePage() {
           </div>
         </div>
       </div>
+
+      <footer className="page-footer">
+        Dashboard versi {lastUpdatedLabel} WIB — perbaikan terbaru analisis pump, historis sideway, efek BTC, dan grafik mini.
+      </footer>
     </main>
   );
 }

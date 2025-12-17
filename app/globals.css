@@ -466,6 +466,88 @@ a {
   border: 1px dashed rgba(94, 234, 212, 0.5);
 }
 
+.pump-math-history {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.6rem;
+  background: rgba(14, 165, 233, 0.08);
+  border: 1px solid rgba(14, 165, 233, 0.35);
+  border-radius: 0.75rem;
+  padding: 0.65rem;
+}
+
+.history-block {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+  border-radius: 0.6rem;
+  padding: 0.55rem;
+}
+
+.history-label {
+  font-size: 0.78rem;
+  color: #93c5fd;
+  letter-spacing: 0.02em;
+}
+
+.history-value {
+  font-weight: 700;
+  color: #f8fafc;
+  margin-top: 0.15rem;
+}
+
+.history-sub {
+  font-size: 0.78rem;
+  color: #cbd5e1;
+}
+
+.pump-math-spark {
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.12), rgba(16, 185, 129, 0.08));
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  border-radius: 0.7rem;
+  padding: 0.65rem;
+}
+
+.spark-label {
+  font-size: 0.82rem;
+  color: #a5b4fc;
+}
+
+.spark-track {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+  margin: 0.45rem 0;
+}
+
+.spark-bar {
+  position: relative;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
+  height: 12px;
+  overflow: hidden;
+}
+
+.spark-bar span {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+}
+
+.spark-up {
+  background: linear-gradient(90deg, rgba(34, 197, 94, 0.8), rgba(74, 222, 128, 0.6));
+}
+
+.spark-down {
+  background: linear-gradient(90deg, rgba(248, 113, 113, 0.8), rgba(239, 68, 68, 0.6));
+}
+
+.spark-meta {
+  font-size: 0.8rem;
+  color: #cbd5e1;
+}
+
 .diag-label {
   font-size: 0.78rem;
   color: #a5b4fc;
@@ -1052,6 +1134,17 @@ a {
   border: 1px solid rgba(148, 163, 184, 0.15);
   border-radius: 12px;
   padding: 0.75rem;
+}
+
+.page-footer {
+  margin-top: 1.25rem;
+  padding: 0.75rem 1rem;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.75rem;
+  text-align: center;
+  color: #cbd5e1;
+  font-size: 0.86rem;
 }
 
 .indodax-chart-wrapper {
