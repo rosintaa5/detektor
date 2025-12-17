@@ -551,6 +551,27 @@ export default function HomePage() {
         const momentumScore = Math.min(24, Math.max(0, momentumPct * 0.7));
         const score = Math.round(volumeScore + rrScore + setupScore + momentumScore);
 
+        const liquidityLabel =
+          coin.volIdr >= 5_000_000_000
+            ? 'Likuid tinggi'
+            : coin.volIdr >= 2_000_000_000
+              ? 'Likuid cukup'
+              : 'Likuid tipis';
+
+        const bufferNote =
+          downsidePct >= 5
+            ? 'Buffer SL aman'
+            : downsidePct >= 3
+              ? 'Buffer pas-pasan'
+              : 'Buffer tipis, rawan longsor';
+
+        const entryNote =
+          entryGapPct < -3
+            ? 'Harga lari jauh di atas entry, tunggu retrace'
+            : entryGapPct < 1
+              ? 'Sudah di dekat/paska entry'
+              : 'Masih diskon vs entry, boleh cicil';
+
         let bias: 'bull' | 'neutral' | 'risk' = 'bull';
         if (rrLive < 1.4 || upsidePct < 6) {
           bias = 'risk';
@@ -564,8 +585,19 @@ export default function HomePage() {
                 entryGapPct > 1 ? 'masih diskon' : 'sudah jalan'
               } ${entryGapPct.toFixed(1)}%.`
             : bias === 'neutral'
-              ? `Setup cukup, tapi butuh konfirmasi volume tambahan. Upside ${upsidePct.toFixed(1)}%, RR ${rrLive.toFixed(2)}.`
-              : `Risiko > reward (${rrLive.toFixed(2)}). Lebih aman tunggu re-entry dekat ${formatPrice(coin.entry)}.`;
+            ? `Setup cukup, tapi butuh konfirmasi volume tambahan. Upside ${upsidePct.toFixed(1)}%, RR ${rrLive.toFixed(2)}.`
+            : `Risiko > reward (${rrLive.toFixed(2)}). Lebih aman tunggu re-entry dekat ${formatPrice(coin.entry)}.`;
+
+        const convictionLabel =
+          score >= 90 ? 'A' : score >= 75 ? 'B+' : score >= 65 ? 'B' : score >= 55 ? 'C+' : 'C';
+        const convictionNote =
+          rrLive >= 2.4
+            ? 'RR sangat sehat, prioritas masuk'
+            : rrLive >= 1.6
+              ? 'RR oke, boleh eksekusi bertahap'
+              : 'RR rendah, dahulukan proteksi';
+
+        const riskNote = `${bufferNote} • ${entryNote}`;
 
         return {
           coin,
@@ -578,6 +610,10 @@ export default function HomePage() {
           score,
           bias,
           actionLine,
+          liquidityLabel,
+          convictionLabel,
+          convictionNote,
+          riskNote,
         };
       })
       .sort((a, b) => b.score - a.score);
@@ -1348,6 +1384,24 @@ export default function HomePage() {
                         <div className="metric-label">Momentum</div>
                         <div className="metric-value">{item.momentumPct.toFixed(1)}%</div>
                         <div className="metric-sub">Kenaikan dari low 24j</div>
+                      </div>
+                    </div>
+
+                    <div className="pump-math-diagnosis">
+                      <div>
+                        <div className="diag-label">Conviction</div>
+                        <div className="diag-value">{item.convictionLabel}</div>
+                        <div className="diag-sub">{item.convictionNote}</div>
+                      </div>
+                      <div>
+                        <div className="diag-label">Likuiditas</div>
+                        <div className="diag-value">{item.liquidityLabel}</div>
+                        <div className="diag-sub">Volume {formatter.format(item.coin.volIdr)} IDR</div>
+                      </div>
+                      <div>
+                        <div className="diag-label">Penjagaan</div>
+                        <div className="diag-value">{item.riskNote}</div>
+                        <div className="diag-sub">Pastikan SL siap dan hindari FOMO</div>
                       </div>
                     </div>
 
