@@ -1434,7 +1434,7 @@ export default function HomePage() {
                         <div className="pump-math-pair">{item.coin.pair.toUpperCase()}</div>
                         <div className="pump-math-sub">Volume {formatter.format(item.coin.volIdr)} IDR</div>
                       </div>
-                      <div className="pump-math-score">Score {item.score}</div>
+                      <div className="pump-math-score">Skor {item.score}</div>
                     </div>
 
                     <div className="pump-math-metrics">
