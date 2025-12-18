@@ -35,7 +35,7 @@ export default function IndodaxChart({ pair, height = 400 }: IndodaxChartProps) 
       hide_volume: '0',
       allow_symbol_change: '1',
       hideideas: '1',
-      locale: 'id',
+      locale: 'en',
     });
 
     return `https://s.tradingview.com/widgetembed/?${params.toString()}`;
@@ -44,15 +44,15 @@ export default function IndodaxChart({ pair, height = 400 }: IndodaxChartProps) 
   return (
     <div className="indodax-chart-wrapper" style={{ minHeight: height }}>
       {!loaded && !hasError && (
-        <div className="indodax-chart-placeholder">Memuat chart Indodax...</div>
+        <div className="indodax-chart-placeholder">Loading Indodax chart...</div>
       )}
       {hasError && (
         <div className="indodax-chart-error">
-          Chart embed gagal dimuat. Buka langsung di{' '}
+          Chart embed failed to load. Open directly on{' '}
           <a href={`https://www.indodax.com/chart/${normalizedPair}`} target="_blank" rel="noreferrer">
             Indodax
           </a>{' '}
-          untuk melihat grafisnya.
+          to view the chart.
         </div>
       )}
       <iframe
@@ -66,7 +66,7 @@ export default function IndodaxChart({ pair, height = 400 }: IndodaxChartProps) 
         allowFullScreen
         referrerPolicy="no-referrer-when-downgrade"
       />
-      <div className="indodax-chart-footer">Data live langsung dari Indodax untuk akurasi harga dan volume.</div>
+      <div className="indodax-chart-footer">Live data direct from Indodax for accurate price and volume.</div>
     </div>
   );
 }
