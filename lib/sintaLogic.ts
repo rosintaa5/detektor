@@ -29,7 +29,7 @@ export interface CoinSignal extends RawTicker {
   reasons: string[];
 }
 
-const MIN_VOL_IDR = 30_000_000; // minimal volume IDR agar dianggap layak
+const MIN_VOL_IDR = 30_000_000; // minimum IDR volume to be considered viable
 const WATCH_MIN_VOL_IDR = 20_000_000;
 const STRONG_VOL_IDR = 100_000_000;
 
@@ -51,18 +51,18 @@ function computeSwingLevels(last: number, high: number, low: number): SwingLevel
     atrApprox = last * 0.03;
   }
 
-  const dipAmount = Math.min(last * 0.005, atrApprox * 0.3); // koreksi kecil
+  const dipAmount = Math.min(last * 0.005, atrApprox * 0.3); // small pullback
   let entry = last - dipAmount;
   if (entry <= 0) entry = last * 0.99;
 
-  let riskAmt = Math.max(entry * 0.03, atrApprox * 1.2); // minimal 3% atau 1.2x ATR approx
+  let riskAmt = Math.max(entry * 0.03, atrApprox * 1.2); // at least 3% or 1.2x ATR approx
   let sl = entry - riskAmt;
   if (sl <= 0) {
     sl = entry * 0.95;
     riskAmt = entry - sl;
   }
 
-  let rewardAmt = Math.max(entry * 0.12, atrApprox * 3); // minimal 12% atau 3x ATR approx
+  let rewardAmt = Math.max(entry * 0.12, atrApprox * 3); // at least 12% or 3x ATR approx
   let tp = entry + rewardAmt;
 
   const riskPct = ((entry - sl) / entry) * 100;
@@ -232,15 +232,15 @@ function buildReasons(coin: CoinSignal): string[] {
 
   if (coin.signal === 'strong_buy') {
     reasons.push(
-      `Sinyal STRONG BUY untuk swing: potensi TP sekitar ${tpPctText}% dengan risiko sekitar ${slPctText}% (R:R ≈ ${rrText}).`
+      `STRONG BUY signal for swing: TP potential around ${tpPctText}% with risk about ${slPctText}% (R:R ≈ ${rrText}).`
     );
   } else if (coin.signal === 'buy') {
     reasons.push(
-      `Sinyal BUY untuk swing: potensi TP sekitar ${tpPctText}% dengan risiko sekitar ${slPctText}% (R:R ≈ ${rrText}).`
+      `BUY signal for swing: TP potential around ${tpPctText}% with risk about ${slPctText}% (R:R ≈ ${rrText}).`
     );
   } else if (coin.signal === 'watch') {
     reasons.push(
-      `Koin berada di watchlist (siap-siap BUY): potensi TP sekitar ${tpPctText}% dengan risiko sekitar ${slPctText}% (R:R ≈ ${rrText}).`
+      `Coin is on watchlist (prepare to BUY): TP potential around ${tpPctText}% with risk about ${slPctText}% (R:R ≈ ${rrText}).`
     );
   }
 
@@ -250,36 +250,36 @@ function buildReasons(coin: CoinSignal): string[] {
 
   if (coin.pricePhase === 'baru_mau_naik') {
     reasons.push(
-      `Harga berada di bagian bawah–tengah range 24 jam (~${posPct}% dari low ke high) dan sudah naik sekitar ${moveLowPct}% dari low, mengindikasikan awal kenaikan.`
+      `Price sits in the lower-to-middle 24h range (~${posPct}% from low to high) and has climbed about ${moveLowPct}% from the low, indicating an early uptrend.`
     );
   } else if (coin.pricePhase === 'sudah_telanjur_naik') {
     reasons.push(
-      `Harga sudah mendekati high 24 jam (~${posPct}% dari low ke high) dan telah naik sekitar ${moveLowPct}% dari low; risiko koreksi cukup besar, masuk posisi perlu ekstra hati-hati.`
+      `Price is already near the 24h high (~${posPct}% from low to high) and up about ${moveLowPct}% from the low; correction risk is high so new entries need extra caution.`
     );
   } else {
     reasons.push(
-      `Posisi harga saat ini berada di area tengah range 24 jam (~${posPct}% dari low ke high), kondisi cenderung netral.`
+      `Current price is in the mid-range of the last 24h (~${posPct}% from low to high), suggesting a neutral setup.`
     );
   }
 
   if (coin.pumpStatus === 'mau_pump') {
     const volM = (coin.volIdr / 1_000_000).toFixed(1);
     reasons.push(
-      `Volume 24 jam tinggi (~${volM} M IDR) dan kenaikan dari low 24 jam cukup besar (~${moveLowPct}%), mengindikasikan potensi PUMP / momentum kuat.`
+      `24h volume is high (~${volM} M IDR) and the rise from the 24h low is sizable (~${moveLowPct}%), indicating pump potential or strong momentum.`
     );
   }
 
   reasons.push(
-    `Range harga harian (high-low) sekitar ${rangePct}% dari harga sekarang, cukup lebar untuk target swing beberapa hari (bukan scalping).`
+    `Daily price range (high-low) is about ${rangePct}% of the current price, wide enough for multi-day swing targets (not scalping).`
   );
 
   const fmt = (v: number) =>
-    new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(v);
+    new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(v);
 
   reasons.push(
-    `Level trading yang disarankan: Entry sekitar ${fmt(coin.entry)} IDR, TP di ${fmt(
+    `Suggested levels: Entry around ${fmt(coin.entry)} IDR, TP at ${fmt(
       coin.tp
-    )} IDR, dan SL di ${fmt(coin.sl)} IDR.`
+    )} IDR, and SL at ${fmt(coin.sl)} IDR.`
   );
 
   return reasons;
