@@ -972,6 +972,15 @@ a {
   color: #cbd5e1;
 }
 
+.forecast-tp-list {
+  margin: 0.2rem 0 0;
+  padding-left: 1.05rem;
+  display: grid;
+  gap: 0.1rem;
+  color: #e5e7eb;
+  font-size: 0.82rem;
+}
+
 .accent-radar {
   border-left: 4px solid #fb7185;
   background: linear-gradient(135deg, rgba(251, 113, 133, 0.2), rgba(15, 23, 42, 0.9));

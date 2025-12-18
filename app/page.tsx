@@ -1394,6 +1394,7 @@ export default function HomePage() {
                   <div key={item.coin.pair} className={`pump-math-card bias-${item.bias}`}>
                     {(() => {
                       const edgePct = item.upsidePct - item.downsidePct;
+                      const tpTargets = computeTpTargets(item.coin);
                       const buyLine =
                         item.rrLive >= 2
                           ? `Layak dibeli: upside ${item.upsidePct.toFixed(1)}% & RR ${item.rrLive.toFixed(2)}x (RR sehat).`
@@ -1465,6 +1466,13 @@ export default function HomePage() {
                             <div className="forecast-title">Perkiraan tembus TP</div>
                             <div className="forecast-value">{tpChance}%</div>
                             <div className="forecast-sub">{tpLine}</div>
+                            <ul className="forecast-tp-list">
+                              {tpTargets.map((tp, idx) => (
+                                <li key={`${item.coin.pair}-tp-${idx}`}>
+                                  TP {idx + 1}: {formatPrice(tp.price)} ({tp.pct.toFixed(1)}%)
+                                </li>
+                              ))}
+                            </ul>
                           </div>
 
                           <div className="pump-math-support">
