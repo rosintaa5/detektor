@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import PairChart from '../components/PairChart';
 import CoinTable from '../components/CoinTable';
 import type { CoinSignal } from '../lib/sintaLogic';
@@ -15,39 +15,45 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       const res = await fetch('/api/tickers');
       if (!res.ok) {
-        throw new Error(`Gagal mengambil data (${res.status})`);
+        throw new Error(`Failed to fetch data (${res.status})`);
       }
       const data: ApiResponse = await res.json();
       setCoins(data.coins || []);
-      if (!selected && data.coins && data.coins.length > 0) {
-        setSelected(data.coins[0]);
-      } else if (selected && data.coins) {
-        const updated = data.coins.find((c) => c.pair === selected.pair);
-        setSelected(updated ?? data.coins[0] ?? null);
-      }
+      setSelected((prevSelected) => {
+        if ((!prevSelected || !data.coins) && data.coins && data.coins.length > 0) {
+          return data.coins[0];
+        }
+
+        if (prevSelected && data.coins) {
+          const updated = data.coins.find((c) => c.pair === prevSelected.pair);
+          return updated ?? data.coins[0] ?? null;
+        }
+
+        return prevSelected ?? null;
+      });
     } catch (err: unknown) {
       console.error(err);
-      setError(err instanceof Error ? err.message : 'Gagal mengambil data');
+      setError(err instanceof Error ? err.message : 'Failed to fetch data');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   const strongAndBuy = coins.filter(
     (c) => c.signal === 'strong_buy' || c.signal === 'buy'
   );
   const watchList = coins.filter((c) => c.signal === 'watch');
-  const pumpList = coins.filter((c) => c.pumpStatus === 'mau_pump');
+  const pumpList = coins.filter((c) => c.pumpStatus === 'potential_pump');
 
   return (
     <main className="page">
@@ -55,7 +61,7 @@ export default function HomePage() {
         <div>
           <h1>SINTA Crypto Detector</h1>
           <p className="subtitle">
-            Screening koin Indodax untuk swing trading (TP besar, tahan beberapa hari).
+            Screening Indodax coins for swing trading (bigger TP, held for several days).
           </p>
         </div>
         <div className="header-actions">
@@ -65,7 +71,7 @@ export default function HomePage() {
             disabled={loading}
             className="button"
           >
-            {loading ? 'Memuat...' : 'Refresh data'}
+            {loading ? 'Loading...' : 'Refresh data'}
           </button>
         </div>
       </header>
@@ -78,7 +84,7 @@ export default function HomePage() {
             <>
               <PairChart coin={selected} />
               <div className="reasons-box">
-                <h3>Alasan Sinyal</h3>
+                <h3>Signal reasons</h3>
                 <ul>
                   {selected.reasons.map((reason, idx) => (
                     <li key={idx}>{reason}</li>
@@ -89,17 +95,17 @@ export default function HomePage() {
           ) : (
             <div className="empty-state">
               {loading
-                ? 'Mengambil data koin...'
-                : 'Belum ada koin yang dipilih / sinyal belum tersedia.'}
+                ? 'Fetching coin data...'
+                : 'No coin selected yet / signals are not available.'}
             </div>
           )}
         </div>
 
         <div className="right-panel">
           <section className="side-section">
-            <h3>Koin siap-siap BUY (watchlist)</h3>
+            <h3>Coins preparing for BUY (watchlist)</h3>
             {watchList.length === 0 ? (
-              <p className="muted">Belum ada koin yang masuk kategori siap-siap BUY.</p>
+              <p className="muted">No coins are in the preparing-to-BUY category yet.</p>
             ) : (
               <ul className="side-list">
                 {watchList.map((c) => (
@@ -112,7 +118,7 @@ export default function HomePage() {
                   >
                     <div className="side-list-title">
                       <span>{c.pair.toUpperCase()}</span>
-                      <span className="badge badge-watch">Siap-siap BUY</span>
+                      <span className="badge badge-watch">Preparing for BUY</span>
                     </div>
                     <div className="side-list-sub">
                       TP ~{c.tpFromEntryPct.toFixed(1)}% · R:R {c.rr.toFixed(2)}
@@ -124,9 +130,9 @@ export default function HomePage() {
           </section>
 
           <section className="side-section">
-            <h3>Koin mau pump (momentum)</h3>
+            <h3>Coins likely to pump (momentum)</h3>
             {pumpList.length === 0 ? (
-              <p className="muted">Belum ada koin yang terdeteksi mau pump.</p>
+              <p className="muted">No coins detected as likely to pump.</p>
             ) : (
               <ul className="side-list">
                 {pumpList.map((c) => (
@@ -139,10 +145,10 @@ export default function HomePage() {
                   >
                     <div className="side-list-title">
                       <span>{c.pair.toUpperCase()}</span>
-                      <span className="badge badge-pump">Mau pump</span>
+                      <span className="badge badge-pump">Likely to pump</span>
                     </div>
                     <div className="side-list-sub">
-                      Naik dari low 24j ~{c.moveFromLowPct.toFixed(1)}%
+                      Up from 24h low by ~{c.moveFromLowPct.toFixed(1)}%
                     </div>
                   </li>
                 ))}
@@ -153,7 +159,7 @@ export default function HomePage() {
       </section>
 
       <section className="table-section">
-        <h2>Daftar koin STRONG BUY & BUY (swing)</h2>
+        <h2>List of STRONG BUY & BUY coins (swing)</h2>
         <CoinTable
           coins={strongAndBuy}
           selectedPair={selected?.pair ?? null}

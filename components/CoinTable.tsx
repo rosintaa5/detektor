@@ -8,7 +8,7 @@ interface Props {
   onSelectCoin: (coin: CoinSignal) => void;
 }
 
-const formatter = new Intl.NumberFormat('id-ID', {
+const formatter = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 2,
 });
 
@@ -23,7 +23,7 @@ export default function CoinTable({ coins, selectedPair, onSelectCoin }: Props) 
   if (coins.length === 0) {
     return (
       <p className="muted">
-        Belum ada koin yang memenuhi kriteria STRONG BUY / BUY.
+        No coins meet the STRONG BUY / BUY criteria yet.
       </p>
     );
   }
@@ -34,8 +34,8 @@ export default function CoinTable({ coins, selectedPair, onSelectCoin }: Props) 
         <thead>
           <tr>
             <th>Pair</th>
-            <th>Sinyal</th>
-            <th>Fase</th>
+            <th>Signal</th>
+            <th>Phase</th>
             <th>Status</th>
             <th>Last</th>
             <th>Entry</th>
@@ -44,22 +44,22 @@ export default function CoinTable({ coins, selectedPair, onSelectCoin }: Props) 
             <th>TP %</th>
             <th>SL %</th>
             <th>R:R</th>
-            <th>Volume 24j (IDR)</th>
+            <th>24h Volume (IDR)</th>
           </tr>
         </thead>
         <tbody>
           {coins.map((coin) => {
             const isSelected = selectedPair === coin.pair;
             const phaseLabel =
-              coin.pricePhase === 'baru_mau_naik'
-                ? 'Baru mau naik'
-                : coin.pricePhase === 'sudah_telanjur_naik'
-                ? 'Sudah telanjur naik'
+              coin.pricePhase === 'starting_to_rise'
+                ? 'Starting to rise'
+                : coin.pricePhase === 'already_run_up'
+                ? 'Already run up'
                 : 'Normal';
 
             let statusLabel = '';
-            if (coin.pumpStatus === 'mau_pump') {
-              statusLabel = 'Mau pump';
+            if (coin.pumpStatus === 'potential_pump') {
+              statusLabel = 'Likely to pump';
             }
 
             return (
