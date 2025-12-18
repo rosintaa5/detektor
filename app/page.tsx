@@ -1380,8 +1380,8 @@ export default function HomePage() {
               <div>
                 <h3>Lab Hitung Mau Pump</h3>
                 <p className="muted">
-                  Kalkulasi langsung RR live, jarak TP/SL, gap ke entry, suhu range, historis sideway, efek BTC, dan grafik mini
-                  upside/downside supaya eksekusi makin yakin.
+                  Ringkas keyakinan mau pump per koin dengan bahasa sederhana: seberapa yakin % pump, alasan layak beli,
+                  kapan boleh beli dulu/cicil, dan apa yang perlu diwaspadai.
                 </p>
               </div>
               <span className="badge badge-strong">Angka real-time</span>
@@ -1394,106 +1394,64 @@ export default function HomePage() {
                 {pumpMathList.slice(0, 4).map((item) => (
                   <div key={item.coin.pair} className={`pump-math-card bias-${item.bias}`}>
                     <div className="pump-math-head">
-                      <div>
+                      <div className="pump-math-title">
                         <div className="pump-math-pair">{item.coin.pair.toUpperCase()}</div>
-                        <div className="pump-math-sub">Volume {formatter.format(item.coin.volIdr)} IDR</div>
+                        <div className="pump-math-sub">Likuiditas {item.liquidityLabel} • Volume {formatter.format(item.coin.volIdr)} IDR</div>
                       </div>
-                      <div className="pump-math-score">Score {item.score}</div>
-                    </div>
-
-                    <div className="pump-math-metrics">
-                      <div>
-                        <div className="metric-label">Upside → TP</div>
-                        <div className="metric-value">{item.upsidePct.toFixed(1)}%</div>
-                        <div className="metric-sub">Jarak dari harga last ke TP</div>
-                      </div>
-                      <div>
-                        <div className="metric-label">Cushion → SL</div>
-                        <div className="metric-value">{item.downsidePct.toFixed(1)}%</div>
-                        <div className="metric-sub">Turun sebelum kena SL</div>
-                      </div>
-                      <div>
-                        <div className="metric-label">RR live</div>
-                        <div className="metric-value">{item.rrLive.toFixed(2)}x</div>
-                        <div className="metric-sub">Banding upside vs downside saat ini</div>
-                      </div>
-                      <div>
-                        <div className="metric-label">Gap ke Entry</div>
-                        <div className="metric-value">{item.entryGapPct.toFixed(1)}%</div>
-                        <div className="metric-sub">Minus = masih diskon</div>
-                      </div>
-                      <div>
-                        <div className="metric-label">Heat 24j</div>
-                        <div className="metric-value">{item.heatPct.toFixed(1)}%</div>
-                        <div className="metric-sub">Posisi di rentang low-high</div>
-                      </div>
-                      <div>
-                        <div className="metric-label">Momentum</div>
-                        <div className="metric-value">{item.momentumPct.toFixed(1)}%</div>
-                        <div className="metric-sub">Kenaikan dari low 24j</div>
+                      <div className="confidence-box">
+                        <div className="confidence-value">{item.confidencePct}%</div>
+                        <div className="confidence-label">Yakin pump</div>
+                        <span className="confidence-grade">{item.convictionLabel}</span>
                       </div>
                     </div>
 
-                    <div className="pump-math-diagnosis">
-                      <div>
-                        <div className="diag-label">Conviction</div>
-                        <div className="diag-value">{item.convictionLabel}</div>
-                        <div className="diag-sub">{item.convictionNote}</div>
+                    <div className="pump-math-quick">
+                      <div className="quick-item">
+                        <div className="quick-label">Upside → TP</div>
+                        <div className="quick-value">{item.upsidePct.toFixed(1)}%</div>
+                        <div className="quick-sub">RR live {item.rrLive.toFixed(2)}x</div>
                       </div>
-                      <div>
-                        <div className="diag-label">Likuiditas</div>
-                        <div className="diag-value">{item.liquidityLabel}</div>
-                        <div className="diag-sub">Volume {formatter.format(item.coin.volIdr)} IDR</div>
+                      <div className="quick-item">
+                        <div className="quick-label">Momentum 24j</div>
+                        <div className="quick-value">{item.momentumPct.toFixed(1)}%</div>
+                        <div className="quick-sub">Heat range {item.heatPct.toFixed(1)}%</div>
                       </div>
-                      <div>
-                        <div className="diag-label">Penjagaan</div>
-                        <div className="diag-value">{item.riskNote}</div>
-                        <div className="diag-sub">Pastikan SL siap dan hindari FOMO</div>
-                      </div>
-                    </div>
-
-                    <div className="pump-math-history">
-                      <div className="history-block">
-                        <div className="history-label">Sideway & histori</div>
-                        <div className="history-value">{item.sidewayLabel}</div>
-                        <div className="history-sub">{item.sidewayNote}</div>
-                      </div>
-                      <div className="history-block">
-                        <div className="history-label">Break & garis</div>
-                        <div className="history-value">{item.structureNote}</div>
-                        <div className="history-sub">{item.historyNote}</div>
-                      </div>
-                      <div className="history-block">
-                        <div className="history-label">Efek BTC</div>
-                        <div className="history-value">{item.btcDrag}</div>
-                        <div className="history-sub">Keyakinan {item.confidencePct}%</div>
+                      <div className="quick-item">
+                        <div className="quick-label">Buffer SL</div>
+                        <div className="quick-value">{item.downsidePct.toFixed(1)}%</div>
+                        <div className="quick-sub">{item.riskNote}</div>
                       </div>
                     </div>
 
-                    <div className="pump-math-spark">
-                      <div className="spark-label">Grafik mini: upside vs downside live</div>
-                      <div className="spark-track">
-                        <div className="spark-bar">
-                          <span
-                            className="spark-up"
-                            style={{ width: `${Math.min(100, Math.max(0, item.upsidePct))}%` }}
-                          />
+                    <div className="pump-math-support">
+                      <div className="support-title">Pendukung kuat</div>
+                      <div className="support-chips">
+                        {[`Setup ${item.sidewayLabel.toLowerCase()}`, item.structureNote, item.btcDrag].map((note, idx) => (
+                          <span key={`${item.coin.pair}-support-${idx}`} className="support-chip">
+                            {note}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="pump-math-action">
+                      {item.actionLine}
+                      <div className="pump-math-hint">Entry gap {item.entryGapPct.toFixed(1)}% • {item.historyNote}</div>
+                      <div className="pump-math-verdict">
+                        <div className="verdict-line">
+                          Layak dibeli karena upside {item.upsidePct.toFixed(1)}% & RR {item.rrLive.toFixed(2)}x.
                         </div>
-                        <div className="spark-bar">
-                          <span
-                            className="spark-down"
-                            style={{ width: `${Math.min(100, Math.max(0, item.downsidePct * 2))}%` }}
-                          />
+                        <div className="verdict-line">
+                          Bisa beli dulu sekarang karena {item.entryGapPct < 0 ? 'harga sudah dekat/di atas entry, momentum jalan' : 'harga masih diskon vs entry'}.
+                        </div>
+                        <div className="verdict-line">
+                          Cicil karena {item.liquidityLabel.toLowerCase()} & heat {item.heatPct.toFixed(1)}% (kurangi FOMO).
+                        </div>
+                        <div className="verdict-line verdict-caution">
+                          Hati-hati karena {item.riskNote.toLowerCase()}.
                         </div>
                       </div>
-                      <div className="spark-meta">
-                        Upside {item.upsidePct.toFixed(1)}% • Downside {item.downsidePct.toFixed(1)}% • Heat {item.heatPct.toFixed(
-                          1
-                        )}% • Momentum {item.momentumPct.toFixed(1)}%
-                      </div>
                     </div>
-
-                    <div className="pump-math-action">{item.actionLine}</div>
                   </div>
                 ))}
               </div>
