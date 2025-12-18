@@ -4,7 +4,7 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = {
   title: 'SINTA Crypto Detector',
   description:
-    'Screening koin Indodax untuk swing trading (Strong Buy, Buy, Siap-siap Buy, Mau Pump)',
+    'Screening Indodax coins for swing trading (Strong Buy, Buy, Preparing to Buy, Likely to Pump)',
 };
 
 export default function RootLayout({
@@ -13,7 +13,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="id">
+    <html lang="en">
       <body>{children}</body>
     </html>
   );
