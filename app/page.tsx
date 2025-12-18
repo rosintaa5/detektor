@@ -1451,13 +1451,16 @@ export default function HomePage() {
                           <div className="pump-math-support">
                             <div className="support-title">Pendukung kuat</div>
                             <div className="support-chips">
-                              {[`Setup ${item.sidewayLabel.toLowerCase()}`, item.structureNote, item.btcDrag].map(
-                                (note, idx) => (
-                                  <span key={`${item.coin.pair}-support-${idx}`} className="support-chip">
-                                    {note}
-                                  </span>
-                                )
-                              )}
+                              {[
+                                `Setup ${item.sidewayLabel.toLowerCase()}`,
+                                item.structureNote,
+                                item.btcDrag,
+                                `Upside ${item.upsidePct.toFixed(1)}% vs buffer ${item.downsidePct.toFixed(1)}%`,
+                              ].map((note, idx) => (
+                                <span key={`${item.coin.pair}-support-${idx}`} className="support-chip">
+                                  {note}
+                                </span>
+                              ))}
                             </div>
                           </div>
 

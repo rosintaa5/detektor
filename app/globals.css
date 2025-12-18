@@ -405,7 +405,7 @@ a {
 
 .pump-math-card {
   border: 1px solid rgba(148, 163, 184, 0.35);
-  background: radial-gradient(circle at 14% 18%, rgba(51, 65, 85, 0.5), rgba(15, 23, 42, 0.95));
+  background: linear-gradient(165deg, #0f172a 0%, #111827 100%);
   border-radius: 0.85rem;
   padding: 0.85rem;
   display: grid;
@@ -941,7 +941,7 @@ a {
 
 .accent-math {
   border-left: 4px solid rgba(148, 163, 184, 0.8);
-  background: linear-gradient(135deg, rgba(30, 41, 59, 0.78), rgba(15, 23, 42, 0.95));
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(10, 12, 20, 0.98));
 }
 
 .accent-radar {
