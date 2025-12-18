@@ -1417,6 +1417,9 @@ export default function HomePage() {
                       const liquidityLine = `Likuiditas ${item.liquidityLabel.toLowerCase()} • Volume ${formatter.format(item.coin.volIdr)} IDR`;
                       const tpChance = Math.min(99, Math.max(35, item.confidencePct));
                       const tpLine = `Prediksi tembus TP: ${tpChance}% (gabungan score & bias BTC).`;
+                      const supportLine = `Pendukung: ${item.structureNote}; ${item.btcDrag}; Upside ${item.upsidePct.toFixed(
+                        1
+                      )}% vs buffer ${item.downsidePct.toFixed(1)}%.`;
 
                       return (
                         <div className="pump-math-body" key={`${item.coin.pair}-body`}>
@@ -1462,12 +1465,9 @@ export default function HomePage() {
                             <div className="support-title">Pendukung kuat</div>
                             <div className="support-chips">
                               {[
-                                `Setup ${item.sidewayLabel.toLowerCase()}`,
                                 item.structureNote,
                                 item.btcDrag,
                                 `Upside ${item.upsidePct.toFixed(1)}% vs buffer ${item.downsidePct.toFixed(1)}%`,
-                                momentumLine,
-                                liquidityLine,
                               ].map((note, idx) => (
                                 <span key={`${item.coin.pair}-support-${idx}`} className="support-chip">
                                   {note}
@@ -1480,6 +1480,7 @@ export default function HomePage() {
                             <div className="summary-title">Kesimpulan cepat</div>
                             <ul>
                               <li>{tpLine}</li>
+                              <li>{supportLine}</li>
                               <li>{buyLine}</li>
                               <li>{timingLine}</li>
                               <li>{paceLine}</li>
