@@ -442,6 +442,12 @@ a {
   letter-spacing: 0.5px;
 }
 
+.pump-math-price {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #cbd5e1;
+}
+
 .pump-math-body {
   display: grid;
   gap: 0.65rem;

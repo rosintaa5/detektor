@@ -1427,7 +1427,10 @@ export default function HomePage() {
                         <div className="pump-math-body" key={`${item.coin.pair}-body`}>
                           <div className="pump-math-head">
                             <div className="pump-math-title">
-                              <div className="pump-math-pair">{item.coin.pair.toUpperCase()}</div>
+                              <div className="pump-math-pair">
+                                {item.coin.pair.toUpperCase()}{' '}
+                                <span className="pump-math-price">({formatPrice(item.coin.last)})</span>
+                              </div>
                               <div className="pump-math-sub">
                                 Likuiditas {item.liquidityLabel} • Volume {formatter.format(item.coin.volIdr)} IDR
                               </div>
