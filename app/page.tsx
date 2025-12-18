@@ -611,47 +611,47 @@ export default function HomePage() {
         const score = Math.round(volumeScore + rrScore + setupScore + momentumScore);
 
         const coilPct = Math.max(0, Math.min(25, ((coin.high - coin.low) / Math.max(coin.low, 1)) * 100));
-        const sidewayLabel = coilPct <= 6 ? 'Range ketat' : coilPct <= 12 ? 'Sideway lebar' : 'Range lebar';
+        const sidewayLabel = coilPct <= 6 ? 'Tight range' : coilPct <= 12 ? 'Wide sideway' : 'Broad range';
         const sidewayNote =
           coilPct <= 6
-            ? 'Sudah range ketat cukup lama; siap meledak kalau volume masuk'
+            ? 'Ranging tightly for a while; ready to pop if volume steps in'
             : coilPct <= 12
-              ? 'Sideway lebar; butuh pemicu yang jelas'
-              : 'Range lebar; momentum sering bolak-balik';
+              ? 'Sideways for a while; needs a clear trigger'
+              : 'Wide range; momentum often whipsaws';
 
         const priorSpike = Math.max(momentumPct - 5, 0);
         const historyNote = priorSpike >= 18
-          ? `Sempat naik ${priorSpike.toFixed(1)}% setelah sideway`
-          : `Kenaikan kecil ${priorSpike.toFixed(1)}%; peluang lanjut masih ada`;
+          ? `Previously climbed ${priorSpike.toFixed(1)}% after ranging`
+          : `Small rise of ${priorSpike.toFixed(1)}%; room to continue is open`;
 
         const midLine = (coin.entry + coin.tp) / 2;
         const crossedMid = Number.isFinite(coin.last) && coin.last >= midLine;
         const structureNote = crossedMid
-          ? 'Sudah melewati garis tengah menuju TP'
-          : 'Belum melewati garis tengah; tunggu trigger';
+          ? 'Price has crossed the mid-line toward TP'
+          : 'Has not crossed the mid-line yet; wait for a trigger';
 
-        const btcDrag = btcContext.bias === 'bearish' ? 'Bias BTC turun—kurangi size' : 'Didukung bias BTC/upside';
+        const btcDrag = btcContext.bias === 'bearish' ? 'BTC bias is down—reduce size' : 'Supported by BTC/upside bias';
 
         const liquidityLabel =
           coin.volIdr >= 5_000_000_000
-            ? 'Likuid tinggi'
+            ? 'High liquidity'
             : coin.volIdr >= 2_000_000_000
-              ? 'Likuid cukup'
-              : 'Likuid tipis';
+              ? 'Decent liquidity'
+              : 'Thin liquidity';
 
         const bufferNote =
           downsidePct >= 5
-            ? 'Buffer SL aman'
+            ? 'SL buffer is comfortable'
             : downsidePct >= 3
-              ? 'Buffer pas-pasan'
-              : 'Buffer tipis; rawan anjlok';
+              ? 'Buffer is middling'
+              : 'Buffer is thin; prone to sharp drops';
 
         const entryNote =
           entryGapPct < -3
-            ? 'Harga sudah lari jauh di atas entry, tunggu retrace'
+            ? 'Price has run far above entry, wait for a retrace'
             : entryGapPct < 1
-              ? 'Sudah dekat/baru lewat entry'
-              : 'Masih di bawah entry—bisa cicil masuk';
+              ? 'Already near or past entry'
+              : 'Still below entry—can scale in';
 
         let bias: 'bull' | 'neutral' | 'risk' = 'bull';
         if (rrLive < 1.4 || upsidePct < 6) {
@@ -662,21 +662,21 @@ export default function HomePage() {
 
         const actionLine =
           bias === 'bull'
-            ? `Upside ${upsidePct.toFixed(1)}% ke TP, RR live ${rrLive.toFixed(2)}; entry ${
-                entryGapPct > 1 ? 'masih diskon' : 'sudah jalan'
-              } ${entryGapPct.toFixed(1)}%.`
+            ? `Chance for ${upsidePct.toFixed(1)}% upside to TP with live RR ${rrLive.toFixed(2)}; entry ${
+                entryGapPct > 1 ? 'still discounted' : 'already moving'
+              } by ${entryGapPct.toFixed(1)}%.`
             : bias === 'neutral'
-            ? `Setup oke tapi butuh konfirmasi volume lagi. Upside ${upsidePct.toFixed(1)}%, RR ${rrLive.toFixed(2)}.`
-            : `Risiko > reward (${rrLive.toFixed(2)}). Lebih aman tunggu re-entry dekat ${formatPrice(coin.entry)}.`;
+            ? `Decent setup but needs extra volume confirmation. Upside ${upsidePct.toFixed(1)}%, RR ${rrLive.toFixed(2)}.`
+            : `Risk > reward (${rrLive.toFixed(2)}). Safer to wait for a re-entry near ${formatPrice(coin.entry)}.`;
 
         const convictionLabel =
           score >= 90 ? 'A' : score >= 75 ? 'B+' : score >= 65 ? 'B' : score >= 55 ? 'C+' : 'C';
         const convictionNote =
           rrLive >= 2.4
-            ? 'RR sangat sehat—prioritas entry'
+            ? 'RR is very healthy—priority entry'
             : rrLive >= 1.6
-              ? 'RR oke—eksekusi bertahap'
-              : 'RR rendah—utamakan proteksi';
+              ? 'RR is solid—execute gradually'
+              : 'RR is low—prioritize protection';
 
         const riskNote = `${bufferNote} • ${entryNote}`;
         const confidencePct = Math.min(99, Math.max(45, Math.round(score * 0.9 + (btcContext.bias === 'bullish' ? 4 : -6))));
@@ -1417,14 +1417,14 @@ export default function HomePage() {
               <div>
                 <h3>Pump Math Lab</h3>
                 <p className="muted">
-                  Hitungan langsung RR, jarak TP/SL, gap ke entry, suhu range, histori sideway, efek BTC, dan grafik mini upside/downside supaya eksekusi lebih yakin.
+                  Live calculations for RR, TP/SL distance, gap to entry, range heat, sideways history, BTC effect, and mini upside/downside chart to increase execution confidence.
                 </p>
               </div>
-              <span className="badge badge-strong">Angka real-time</span>
+              <span className="badge badge-strong">Real-time numbers</span>
             </div>
 
             {pumpMathList.length === 0 ? (
-              <div className="empty-state small">Menunggu sinyal mau pump untuk dihitung.</div>
+              <div className="empty-state small">Waiting for an about-to-pump signal to calculate.</div>
             ) : (
             <div className="pump-math-grid">
               {pumpMathList.slice(0, 4).map((item) => (
@@ -1441,75 +1441,75 @@ export default function HomePage() {
                       <div>
                         <div className="metric-label">Upside → TP</div>
                         <div className="metric-value">{item.upsidePct.toFixed(1)}%</div>
-                        <div className="metric-sub">Jarak dari harga last ke TP</div>
+                        <div className="metric-sub">Distance from last price to TP</div>
                       </div>
                       <div>
                         <div className="metric-label">Cushion → SL</div>
                         <div className="metric-value">{item.downsidePct.toFixed(1)}%</div>
-                        <div className="metric-sub">Turun sebelum kena SL</div>
+                        <div className="metric-sub">Drop allowed before hitting SL</div>
                       </div>
                       <div>
                         <div className="metric-label">RR live</div>
                         <div className="metric-value">{item.rrLive.toFixed(2)}x</div>
-                        <div className="metric-sub">Banding upside vs downside sekarang</div>
+                        <div className="metric-sub">Comparing current upside vs downside</div>
                       </div>
                       <div>
                         <div className="metric-label">Gap ke Entry</div>
                         <div className="metric-value">{item.entryGapPct.toFixed(1)}%</div>
-                        <div className="metric-sub">Minus = masih diskon</div>
+                        <div className="metric-sub">Negative = still discounted</div>
                       </div>
                       <div>
                         <div className="metric-label">Heat 24j</div>
                         <div className="metric-value">{item.heatPct.toFixed(1)}%</div>
-                        <div className="metric-sub">Posisi di rentang low-high</div>
+                        <div className="metric-sub">Position within low-high range</div>
                       </div>
                       <div>
                         <div className="metric-label">Momentum</div>
                         <div className="metric-value">{item.momentumPct.toFixed(1)}%</div>
-                        <div className="metric-sub">Kenaikan dari low 24j</div>
+                        <div className="metric-sub">Gain from 24h low</div>
                       </div>
                     </div>
 
                     <div className="pump-math-diagnosis">
                       <div>
-                        <div className="diag-label">Nilai keyakinan</div>
+                        <div className="diag-label">Conviction</div>
                         <div className={`diag-value ${item.convictionLabel === 'A' ? 'grade-a-text' : ''}`}>
                           {item.convictionLabel}
                         </div>
                         <div className="diag-sub">{item.convictionNote}</div>
                       </div>
                       <div>
-                        <div className="diag-label">Likuiditas</div>
+                        <div className="diag-label">Liquidity</div>
                         <div className="diag-value">{item.liquidityLabel}</div>
                         <div className="diag-sub">Volume {formatter.format(item.coin.volIdr)} IDR</div>
                       </div>
                       <div>
-                        <div className="diag-label">Penjagaan</div>
+                        <div className="diag-label">Safeguard</div>
                         <div className="diag-value">{item.riskNote}</div>
-                        <div className="diag-sub">Pastikan SL siap, hindari FOMO</div>
+                        <div className="diag-sub">Keep SL ready and avoid FOMO</div>
                       </div>
                     </div>
 
                     <div className="pump-math-history">
                       <div className="history-block">
-                        <div className="history-label">Sideway & histori</div>
+                        <div className="history-label">Sideways & history</div>
                         <div className="history-value">{item.sidewayLabel}</div>
                         <div className="history-sub">{item.sidewayNote}</div>
                       </div>
                       <div className="history-block">
-                        <div className="history-label">Break & garis tengah</div>
+                        <div className="history-label">Break & midline</div>
                         <div className="history-value">{item.structureNote}</div>
                         <div className="history-sub">{item.historyNote}</div>
                       </div>
                       <div className="history-block">
-                        <div className="history-label">Efek BTC</div>
+                        <div className="history-label">BTC effect</div>
                         <div className="history-value">{item.btcDrag}</div>
-                        <div className="history-sub">Keyakinan {item.confidencePct}%</div>
+                        <div className="history-sub">Confidence {item.confidencePct}%</div>
                       </div>
                     </div>
 
                     <div className="pump-math-spark">
-                      <div className="spark-label">Grafik mini: upside vs downside live</div>
+                      <div className="spark-label">Mini chart: live upside vs downside</div>
                       <div className="spark-track">
                         <div className="spark-bar">
                           <span
@@ -1559,7 +1559,7 @@ export default function HomePage() {
                       <span className="grade-a-text">{item.pair.toUpperCase()}</span>
                       <span className="badge badge-buy">Grade A</span>
                     </div>
-                    <div className="side-list-sub">Harga terakhir {formatPrice(item.last)} IDR • Entry {formatPrice(item.entry)} • TP {formatPrice(item.tp)}</div>
+                    <div className="side-list-sub">Last {formatPrice(item.last)} IDR • Entry {formatPrice(item.entry)} • TP {formatPrice(item.tp)}</div>
                     <div className="side-list-sub">RR live {item.rr.toFixed(2)} • Momentum {item.momentum.toFixed(1)}%</div>
                     <div className="side-list-sub">
                       <span className={`indo-pill ${item.isPumped ? 'hot' : 'calm'}`}>
