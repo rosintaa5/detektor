@@ -406,6 +406,7 @@ a {
 .pump-math-card {
   border: 1px solid rgba(148, 163, 184, 0.35);
   background: #0b1220;
+  background-image: none;
   border-radius: 0.85rem;
   padding: 0.85rem;
   display: grid;
@@ -942,6 +943,7 @@ a {
 .accent-math {
   border-left: 4px solid rgba(148, 163, 184, 0.8);
   background: #0b1220;
+  background-image: none;
 }
 
 .pump-math-summary {
@@ -966,6 +968,32 @@ a {
   gap: 0.15rem;
   color: #e5e7eb;
   font-size: 0.86rem;
+}
+
+.pump-math-forecast {
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 0.7rem;
+  padding: 0.65rem 0.7rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.forecast-title {
+  font-size: 0.82rem;
+  color: #cbd5e1;
+  letter-spacing: 0.02em;
+}
+
+.forecast-value {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #e5e7eb;
+}
+
+.forecast-sub {
+  font-size: 0.82rem;
+  color: #cbd5e1;
 }
 
 .accent-radar {

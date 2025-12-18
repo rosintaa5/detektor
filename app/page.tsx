@@ -1415,6 +1415,8 @@ export default function HomePage() {
                       const cautionLine = `Hati-hati: ${item.riskNote.toLowerCase()}.`;
                       const momentumLine = `Momentum ${item.momentumPct.toFixed(1)}% & heat ${item.heatPct.toFixed(1)}%`;
                       const liquidityLine = `Likuiditas ${item.liquidityLabel.toLowerCase()} • Volume ${formatter.format(item.coin.volIdr)} IDR`;
+                      const tpChance = Math.min(99, Math.max(35, item.confidencePct));
+                      const tpLine = `Prediksi tembus TP: ${tpChance}% (gabungan score & bias BTC).`;
 
                       return (
                         <div className="pump-math-body" key={`${item.coin.pair}-body`}>
@@ -1450,6 +1452,12 @@ export default function HomePage() {
                             </div>
                           </div>
 
+                          <div className="pump-math-forecast">
+                            <div className="forecast-title">Perkiraan tembus TP</div>
+                            <div className="forecast-value">{tpChance}%</div>
+                            <div className="forecast-sub">{tpLine}</div>
+                          </div>
+
                           <div className="pump-math-support">
                             <div className="support-title">Pendukung kuat</div>
                             <div className="support-chips">
@@ -1471,6 +1479,7 @@ export default function HomePage() {
                           <div className="pump-math-summary">
                             <div className="summary-title">Kesimpulan cepat</div>
                             <ul>
+                              <li>{tpLine}</li>
                               <li>{buyLine}</li>
                               <li>{timingLine}</li>
                               <li>{paceLine}</li>
