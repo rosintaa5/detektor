@@ -405,7 +405,7 @@ a {
 
 .pump-math-card {
   border: 1px solid rgba(148, 163, 184, 0.35);
-  background: linear-gradient(165deg, #0b1220 0%, #0f172a 100%);
+  background: #0b1220;
   border-radius: 0.85rem;
   padding: 0.85rem;
   display: grid;
@@ -692,9 +692,9 @@ a {
 }
 
 .badge-strong {
-  border-color: rgba(52, 211, 153, 0.8);
-  background: rgba(16, 185, 129, 0.15);
-  color: #6ee7b7;
+  border-color: rgba(148, 163, 184, 0.8);
+  background: rgba(148, 163, 184, 0.15);
+  color: #e5e7eb;
 }
 
 .badge-buy {
@@ -941,7 +941,7 @@ a {
 
 .accent-math {
   border-left: 4px solid rgba(148, 163, 184, 0.8);
-  background: linear-gradient(135deg, rgba(11, 18, 32, 0.96), rgba(8, 10, 18, 0.99));
+  background: #0b1220;
 }
 
 .pump-math-summary {
