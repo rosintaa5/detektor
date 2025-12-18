@@ -414,13 +414,11 @@ a {
 }
 
 .pump-math-card.bias-bull {
-  border-color: rgba(34, 197, 94, 0.6);
-  box-shadow: 0 12px 24px rgba(34, 197, 94, 0.2);
+  border-color: rgba(52, 211, 153, 0.35);
 }
 
 .pump-math-card.bias-risk {
-  border-color: rgba(248, 113, 113, 0.6);
-  box-shadow: 0 12px 24px rgba(248, 113, 113, 0.18);
+  border-color: rgba(248, 113, 113, 0.35);
 }
 
 .pump-math-head {
