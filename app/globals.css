@@ -946,30 +946,6 @@ a {
   background-image: none;
 }
 
-.pump-math-summary {
-  background: rgba(15, 23, 42, 0.82);
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  border-radius: 0.7rem;
-  padding: 0.6rem 0.7rem;
-  display: grid;
-  gap: 0.3rem;
-}
-
-.summary-title {
-  font-size: 0.85rem;
-  color: #cbd5e1;
-  font-weight: 700;
-}
-
-.pump-math-summary ul {
-  margin: 0;
-  padding-left: 1.1rem;
-  display: grid;
-  gap: 0.15rem;
-  color: #e5e7eb;
-  font-size: 0.86rem;
-}
-
 .pump-math-forecast {
   background: rgba(15, 23, 42, 0.9);
   border: 1px solid rgba(148, 163, 184, 0.35);

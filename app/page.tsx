@@ -1393,6 +1393,7 @@ export default function HomePage() {
                 {pumpMathList.slice(0, 4).map((item) => (
                   <div key={item.coin.pair} className={`pump-math-card bias-${item.bias}`}>
                     {(() => {
+                      const edgePct = item.upsidePct - item.downsidePct;
                       const buyLine =
                         item.rrLive >= 2
                           ? `Layak dibeli: upside ${item.upsidePct.toFixed(1)}% & RR ${item.rrLive.toFixed(2)}x (RR sehat).`
@@ -1453,6 +1454,11 @@ export default function HomePage() {
                               <div className="quick-value">{item.downsidePct.toFixed(1)}%</div>
                               <div className="quick-sub">{item.riskNote}</div>
                             </div>
+                            <div className="quick-item">
+                              <div className="quick-label">Edge live</div>
+                              <div className="quick-value">{edgePct.toFixed(1)}%</div>
+                              <div className="quick-sub">Upside - downside</div>
+                            </div>
                           </div>
 
                           <div className="pump-math-forecast">
@@ -1476,22 +1482,12 @@ export default function HomePage() {
                             </div>
                           </div>
 
-                          <div className="pump-math-summary">
-                            <div className="summary-title">Kesimpulan cepat</div>
-                            <ul>
-                              <li>{tpLine}</li>
-                              <li>{supportLine}</li>
-                              <li>{buyLine}</li>
-                              <li>{timingLine}</li>
-                              <li>{paceLine}</li>
-                              <li>{cautionLine}</li>
-                            </ul>
-                          </div>
-
                           <div className="pump-math-action">
                             {item.actionLine}
                             <div className="pump-math-hint">Entry gap {item.entryGapPct.toFixed(1)}% • {item.historyNote}</div>
                             <div className="pump-math-verdict">
+                              <div className="verdict-line">{tpLine}</div>
+                              <div className="verdict-line">{supportLine}</div>
                               <div className="verdict-line">{buyLine}</div>
                               <div className="verdict-line">{timingLine}</div>
                               <div className="verdict-line">{paceLine}</div>
