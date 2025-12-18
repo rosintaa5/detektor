@@ -441,6 +441,11 @@ a {
   letter-spacing: 0.5px;
 }
 
+.pump-math-body {
+  display: grid;
+  gap: 0.65rem;
+}
+
 .pump-math-sub {
   font-size: 0.8rem;
   color: #bae6fd;
@@ -936,7 +941,7 @@ a {
 
 .accent-math {
   border-left: 4px solid #22d3ee;
-  background: linear-gradient(135deg, rgba(34, 211, 238, 0.2), rgba(15, 23, 42, 0.9));
+  background: linear-gradient(135deg, rgba(75, 85, 99, 0.6), rgba(15, 23, 42, 0.95));
 }
 
 .accent-radar {

@@ -1392,65 +1392,88 @@ export default function HomePage() {
               <div className="pump-math-grid">
                 {pumpMathList.slice(0, 4).map((item) => (
                   <div key={item.coin.pair} className={`pump-math-card bias-${item.bias}`}>
-                    <div className="pump-math-head">
-                      <div className="pump-math-title">
-                        <div className="pump-math-pair">{item.coin.pair.toUpperCase()}</div>
-                        <div className="pump-math-sub">Likuiditas {item.liquidityLabel} • Volume {formatter.format(item.coin.volIdr)} IDR</div>
-                      </div>
-                      <div className="confidence-box">
-                        <div className="confidence-value">{item.confidencePct}%</div>
-                        <div className="confidence-label">Yakin pump</div>
-                        <span className="confidence-grade">{item.convictionLabel}</span>
-                      </div>
-                    </div>
+                    {(() => {
+                      const buyLine =
+                        item.rrLive >= 2
+                          ? `Layak dibeli: upside ${item.upsidePct.toFixed(1)}% & RR ${item.rrLive.toFixed(2)}x (RR sehat).`
+                          : `Masih layak: upside ${item.upsidePct.toFixed(1)}% & RR ${item.rrLive.toFixed(2)}x (cukup).`;
 
-                    <div className="pump-math-quick">
-                      <div className="quick-item">
-                        <div className="quick-label">Upside → TP</div>
-                        <div className="quick-value">{item.upsidePct.toFixed(1)}%</div>
-                        <div className="quick-sub">RR live {item.rrLive.toFixed(2)}x</div>
-                      </div>
-                      <div className="quick-item">
-                        <div className="quick-label">Momentum 24j</div>
-                        <div className="quick-value">{item.momentumPct.toFixed(1)}%</div>
-                        <div className="quick-sub">Heat range {item.heatPct.toFixed(1)}%</div>
-                      </div>
-                      <div className="quick-item">
-                        <div className="quick-label">Buffer SL</div>
-                        <div className="quick-value">{item.downsidePct.toFixed(1)}%</div>
-                        <div className="quick-sub">{item.riskNote}</div>
-                      </div>
-                    </div>
+                      const timingLine =
+                        item.entryGapPct < -2
+                          ? 'Beli hati-hati: harga sudah jauh di atas entry, tunggu retrace tipis.'
+                          : item.entryGapPct <= 1
+                            ? 'Beli dulu kecil: harga dekat entry, momentum jalan.'
+                            : 'Boleh curi start: harga masih di bawah entry/diskon.';
 
-                    <div className="pump-math-support">
-                      <div className="support-title">Pendukung kuat</div>
-                      <div className="support-chips">
-                        {[`Setup ${item.sidewayLabel.toLowerCase()}`, item.structureNote, item.btcDrag].map((note, idx) => (
-                          <span key={`${item.coin.pair}-support-${idx}`} className="support-chip">
-                            {note}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
+                      const paceLine =
+                        item.heatPct >= 80
+                          ? 'Cicil kecil: heat tinggi, hindari FOMO.'
+                          : item.liquidityLabel === 'Likuid tipis'
+                            ? 'Cicil: likuiditas tipis, jangan all-in.'
+                            : 'Bisa cicil bertahap: likuiditas cukup dan heat aman.';
 
-                    <div className="pump-math-action">
-                      {item.actionLine}
-                      <div className="pump-math-hint">Entry gap {item.entryGapPct.toFixed(1)}% • {item.historyNote}</div>
-                      <div className="pump-math-verdict">
-                        <div className="verdict-line">
-                          Layak dibeli: upside {item.upsidePct.toFixed(1)}% & RR {item.rrLive.toFixed(2)}x.
+                      const cautionLine = `Hati-hati: ${item.riskNote.toLowerCase()}.`;
+
+                      return (
+                        <div className="pump-math-body" key={`${item.coin.pair}-body`}>
+                          <div className="pump-math-head">
+                            <div className="pump-math-title">
+                              <div className="pump-math-pair">{item.coin.pair.toUpperCase()}</div>
+                              <div className="pump-math-sub">
+                                Likuiditas {item.liquidityLabel} • Volume {formatter.format(item.coin.volIdr)} IDR
+                              </div>
+                            </div>
+                            <div className="confidence-box">
+                              <div className="confidence-value">{item.confidencePct}%</div>
+                              <div className="confidence-label">Yakin pump</div>
+                              <span className="confidence-grade">{item.convictionLabel}</span>
+                            </div>
+                          </div>
+
+                          <div className="pump-math-quick">
+                            <div className="quick-item">
+                              <div className="quick-label">Upside → TP</div>
+                              <div className="quick-value">{item.upsidePct.toFixed(1)}%</div>
+                              <div className="quick-sub">RR live {item.rrLive.toFixed(2)}x</div>
+                            </div>
+                            <div className="quick-item">
+                              <div className="quick-label">Momentum 24j</div>
+                              <div className="quick-value">{item.momentumPct.toFixed(1)}%</div>
+                              <div className="quick-sub">Heat range {item.heatPct.toFixed(1)}%</div>
+                            </div>
+                            <div className="quick-item">
+                              <div className="quick-label">Buffer SL</div>
+                              <div className="quick-value">{item.downsidePct.toFixed(1)}%</div>
+                              <div className="quick-sub">{item.riskNote}</div>
+                            </div>
+                          </div>
+
+                          <div className="pump-math-support">
+                            <div className="support-title">Pendukung kuat</div>
+                            <div className="support-chips">
+                              {[`Setup ${item.sidewayLabel.toLowerCase()}`, item.structureNote, item.btcDrag].map(
+                                (note, idx) => (
+                                  <span key={`${item.coin.pair}-support-${idx}`} className="support-chip">
+                                    {note}
+                                  </span>
+                                )
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="pump-math-action">
+                            {item.actionLine}
+                            <div className="pump-math-hint">Entry gap {item.entryGapPct.toFixed(1)}% • {item.historyNote}</div>
+                            <div className="pump-math-verdict">
+                              <div className="verdict-line">{buyLine}</div>
+                              <div className="verdict-line">{timingLine}</div>
+                              <div className="verdict-line">{paceLine}</div>
+                              <div className="verdict-line verdict-caution">{cautionLine}</div>
+                            </div>
+                          </div>
                         </div>
-                        <div className="verdict-line">
-                          Beli dulu/cicil: {item.entryGapPct < 0 ? 'harga sudah dekat/di atas entry, momentum jalan' : 'harga masih diskon vs entry'}.
-                        </div>
-                        <div className="verdict-line">
-                          Modal pelan: likuiditas {item.liquidityLabel.toLowerCase()} & heat {item.heatPct.toFixed(1)}%.
-                        </div>
-                        <div className="verdict-line verdict-caution">
-                          Hati-hati karena {item.riskNote.toLowerCase()}.
-                        </div>
-                      </div>
-                    </div>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>
