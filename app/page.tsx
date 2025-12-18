@@ -1413,6 +1413,8 @@ export default function HomePage() {
                             : 'Bisa cicil bertahap: likuiditas cukup dan heat aman.';
 
                       const cautionLine = `Hati-hati: ${item.riskNote.toLowerCase()}.`;
+                      const momentumLine = `Momentum ${item.momentumPct.toFixed(1)}% & heat ${item.heatPct.toFixed(1)}%`;
+                      const liquidityLine = `Likuiditas ${item.liquidityLabel.toLowerCase()} • Volume ${formatter.format(item.coin.volIdr)} IDR`;
 
                       return (
                         <div className="pump-math-body" key={`${item.coin.pair}-body`}>
@@ -1456,12 +1458,24 @@ export default function HomePage() {
                                 item.structureNote,
                                 item.btcDrag,
                                 `Upside ${item.upsidePct.toFixed(1)}% vs buffer ${item.downsidePct.toFixed(1)}%`,
+                                momentumLine,
+                                liquidityLine,
                               ].map((note, idx) => (
                                 <span key={`${item.coin.pair}-support-${idx}`} className="support-chip">
                                   {note}
                                 </span>
                               ))}
                             </div>
+                          </div>
+
+                          <div className="pump-math-summary">
+                            <div className="summary-title">Kesimpulan cepat</div>
+                            <ul>
+                              <li>{buyLine}</li>
+                              <li>{timingLine}</li>
+                              <li>{paceLine}</li>
+                              <li>{cautionLine}</li>
+                            </ul>
                           </div>
 
                           <div className="pump-math-action">
