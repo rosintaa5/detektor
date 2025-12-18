@@ -707,6 +707,23 @@ export default function HomePage() {
       .sort((a, b) => b.score - a.score);
   }, [btcContext.bias, formatPrice, pumpList]);
 
+  const gradeACheapList = useMemo(
+    () =>
+      pumpMathList
+        .filter((item) => item.coin.last < 1_000 && item.convictionLabel === 'A')
+        .map((item) => ({
+          pair: item.coin.pair,
+          last: item.coin.last,
+          entry: item.coin.entry,
+          tp: item.coin.tp,
+          status: item.coin.pricePhase === 'sudah_telanjur_naik' ? 'Sudah telanjur pump' : 'Belum telanjur pump',
+          isPumped: item.coin.pricePhase === 'sudah_telanjur_naik',
+          rr: item.rrLive,
+          momentum: item.momentumPct,
+        })),
+    [pumpMathList]
+  );
+
   const topPickInsight = useMemo(() => {
     if (topPicks.length === 0) {
       return {
@@ -1519,6 +1536,40 @@ export default function HomePage() {
                   </div>
                 ))}
               </div>
+            )}
+          </section>
+
+          <section id="grade-a" className="section-card accent-math">
+            <div className="section-head">
+              <div>
+                <h3>Koin Grade A &lt; 1000 IDR</h3>
+                <p className="muted">
+                  Fokus koin murah dengan grade A. Status pump diberi warna agar cepat terbaca.
+                </p>
+              </div>
+              <span className="badge badge-strong">Filter murah</span>
+            </div>
+
+            {gradeACheapList.length === 0 ? (
+              <div className="empty-state small">Belum ada koin grade A di bawah 1000 IDR.</div>
+            ) : (
+              <ul className="side-list">
+                {gradeACheapList.map((item) => (
+                  <li key={item.pair} className="side-list-item">
+                    <div className="side-list-title">
+                      <span className="grade-a-text">{item.pair.toUpperCase()}</span>
+                      <span className="badge badge-buy">Grade A</span>
+                    </div>
+                    <div className="side-list-sub">Harga terakhir {formatter.format(item.last)} IDR • Entry {formatter.format(item.entry)} • TP {formatter.format(item.tp)}</div>
+                    <div className="side-list-sub">RR live {item.rr.toFixed(2)} • Momentum {item.momentum.toFixed(1)}%</div>
+                    <div className="side-list-sub">
+                      <span className={`indo-pill ${item.isPumped ? 'hot' : 'calm'}`}>
+                        {item.status}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
             )}
           </section>
 
