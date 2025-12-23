@@ -696,6 +696,44 @@ export default function HomePage() {
       .sort((a, b) => b.score - a.score);
   }, [btcContext.bias, formatPrice, pumpList]);
 
+  const scalpQuickList = useMemo(() => {
+    return pumpMathList
+      .filter((item) => item.coin.last < 100 && item.confidencePct >= 70)
+      .map((item) => {
+        const tpTargets = computeTpTargets(item.coin);
+        const tp1 = tpTargets[0];
+        const tp2 = tpTargets[1];
+        const tpChance = Math.min(99, Math.max(50, Math.round(item.confidencePct + item.rrLive * 5)));
+        const edgePct = item.upsidePct - item.downsidePct;
+
+        const entryNote =
+          item.entryGapPct < -3
+            ? 'Sudah lari, tunggu retrace tipis'
+            : item.entryGapPct <= 1
+              ? 'Dekat entry, bisa sikat cepat'
+              : 'Masih diskon vs entry, curi start';
+
+        return {
+          pair: item.coin.pair,
+          price: item.coin.last,
+          confidence: item.confidencePct,
+          tpChance,
+          rrLive: item.rrLive,
+          upsidePct: item.upsidePct,
+          edgePct,
+          liquidity: item.liquidityLabel,
+          entryGapPct: item.entryGapPct,
+          entryNote,
+          tp1,
+          tp2,
+          action: item.actionLine,
+          supports: [item.structureNote, item.btcDrag, item.riskNote],
+        };
+      })
+      .sort((a, b) => b.confidence - a.confidence)
+      .slice(0, 5);
+  }, [computeTpTargets, pumpMathList]);
+
   const topPickInsight = useMemo(() => {
     if (topPicks.length === 0) {
       return {
@@ -1712,6 +1750,83 @@ export default function HomePage() {
                           <li key={idx}>{detail}</li>
                         ))}
                       </ul>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section id="quick-scalp" className="section-card accent-scalp">
+            <div className="section-head">
+              <div>
+                <h3>Scalp cepat: koin mau pump &lt; Rp100</h3>
+                <p className="muted">
+                  Pilihan kilat dengan persen benar tinggi untuk harga murah—naik dikit bisa langsung jadi profit tebal.
+                </p>
+              </div>
+              <span className="badge badge-neutral">Filter harga &lt; 100</span>
+            </div>
+
+            {scalpQuickList.length === 0 ? (
+              <div className="empty-state small">Belum ada koin murah yang valid untuk scalp cepat.</div>
+            ) : (
+              <div className="scalp-grid">
+                {scalpQuickList.map((item) => (
+                  <div key={item.pair} className="scalp-card">
+                    <div className="scalp-head">
+                      <div>
+                        <div className="scalp-pair">
+                          {item.pair.toUpperCase()}{' '}
+                          <span className="scalp-price">({formatPrice(item.price)})</span>
+                        </div>
+                        <div className="scalp-sub">
+                          Likuiditas {item.liquidity} • Edge {item.edgePct.toFixed(1)}%
+                        </div>
+                      </div>
+                      <div className="scalp-conf">
+                        <div className="scalp-conf-value">{item.confidence}%</div>
+                        <div className="scalp-conf-label">Persen benar</div>
+                        <span className="scalp-conf-grade">RR {item.rrLive.toFixed(2)}x</span>
+                      </div>
+                    </div>
+
+                    <div className="scalp-metrics">
+                      <div className="scalp-metric">
+                        <div className="scalp-metric-label">Upside</div>
+                        <div className="scalp-metric-value">{item.upsidePct.toFixed(1)}%</div>
+                        <div className="scalp-metric-sub">Gap entry {item.entryGapPct.toFixed(1)}%</div>
+                      </div>
+                      <div className="scalp-metric">
+                        <div className="scalp-metric-label">Tembus TP</div>
+                        <div className="scalp-metric-value">{item.tpChance}%</div>
+                        <div className="scalp-metric-sub">Prediksi cepat</div>
+                      </div>
+                      <div className="scalp-metric">
+                        <div className="scalp-metric-label">Entry hint</div>
+                        <div className="scalp-metric-value">{item.entryNote}</div>
+                        <div className="scalp-metric-sub">RR {item.rrLive.toFixed(2)}x</div>
+                      </div>
+                    </div>
+
+                    <div className="scalp-tp">
+                      <div className="scalp-tp-title">Tangga TP untuk scalp</div>
+                      <div className="scalp-tp-steps">
+                        <div className="scalp-tp-pill">TP1 {formatPrice(item.tp1.price)} ({item.tp1.pct.toFixed(1)}%)</div>
+                        <div className="scalp-tp-pill">TP2 {formatPrice(item.tp2.price)} ({item.tp2.pct.toFixed(1)}%)</div>
+                      </div>
+                    </div>
+
+                    <div className="scalp-action">
+                      <div className="scalp-action-title">Alasan singkat</div>
+                      <div className="scalp-action-body">{item.action}</div>
+                      <div className="scalp-supports">
+                        {item.supports.map((note, idx) => (
+                          <span key={`${item.pair}-support-${idx}`} className="scalp-support-chip">
+                            {note}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 ))}
