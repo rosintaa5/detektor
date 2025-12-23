@@ -404,8 +404,8 @@ a {
 }
 
 .pump-math-card {
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: #0b1220;
+  border: 1px solid rgba(226, 232, 240, 0.25);
+  background: #111827;
   background-image: none;
   border-radius: 0.85rem;
   padding: 0.85rem;
@@ -440,12 +440,13 @@ a {
 .pump-math-pair {
   font-weight: 800;
   letter-spacing: 0.5px;
+  color: #f8fafc;
 }
 
 .pump-math-price {
   font-weight: 600;
   font-size: 0.9rem;
-  color: #cbd5e1;
+  color: #e5e7eb;
 }
 
 .pump-math-body {
@@ -455,12 +456,12 @@ a {
 
 .pump-math-sub {
   font-size: 0.8rem;
-  color: #bae6fd;
+  color: #e5e7eb;
 }
 
 .confidence-box {
   background: rgba(226, 232, 240, 0.08);
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  border: 1px solid rgba(226, 232, 240, 0.25);
   border-radius: 0.75rem;
   padding: 0.4rem 0.65rem;
   min-width: 120px;
@@ -477,14 +478,14 @@ a {
 
 .confidence-label {
   font-size: 0.78rem;
-  color: #cbd5e1;
+  color: #e5e7eb;
 }
 
 .confidence-grade {
   justify-self: end;
-  background: rgba(148, 163, 184, 0.2);
-  color: #e2e8f0;
-  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(226, 232, 240, 0.15);
+  color: #f8fafc;
+  border: 1px solid rgba(226, 232, 240, 0.35);
   border-radius: 9999px;
   padding: 0.1rem 0.5rem;
   font-size: 0.75rem;
@@ -498,8 +499,8 @@ a {
 }
 
 .quick-item {
-  background: rgba(15, 23, 42, 0.85);
-  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(226, 232, 240, 0.18);
   border-radius: 0.75rem;
   padding: 0.65rem;
   display: grid;
@@ -526,8 +527,8 @@ a {
 .pump-math-support {
   display: grid;
   gap: 0.4rem;
-  background: rgba(30, 41, 59, 0.8);
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(17, 24, 39, 0.92);
+  border: 1px solid rgba(226, 232, 240, 0.28);
   border-radius: 0.75rem;
   padding: 0.65rem 0.7rem;
 }
@@ -546,8 +547,8 @@ a {
 }
 
 .support-chip {
-  background: rgba(15, 23, 42, 0.88);
-  border: 1px solid rgba(226, 232, 240, 0.25);
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(226, 232, 240, 0.38);
   border-radius: 9999px;
   padding: 0.25rem 0.6rem;
   font-size: 0.78rem;
@@ -555,9 +556,9 @@ a {
 }
 
 .pump-math-action {
-  background: rgba(30, 41, 59, 0.85);
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  color: #e2e8f0;
+  background: rgba(17, 24, 39, 0.94);
+  border: 1px solid rgba(226, 232, 240, 0.28);
+  color: #f8fafc;
   padding: 0.6rem 0.7rem;
   border-radius: 0.65rem;
   font-size: 0.9rem;
@@ -567,14 +568,14 @@ a {
 
 .pump-math-hint {
   font-size: 0.82rem;
-  color: #cbd5e1;
+  color: #e5e7eb;
 }
 
 .pump-math-verdict {
   display: grid;
   gap: 0.2rem;
-  background: rgba(15, 23, 42, 0.82);
-  border: 1px dashed rgba(226, 232, 240, 0.28);
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px dashed rgba(226, 232, 240, 0.36);
   border-radius: 0.65rem;
   padding: 0.5rem 0.55rem;
 }
@@ -953,8 +954,8 @@ a {
 }
 
 .pump-math-forecast {
-  background: rgba(15, 23, 42, 0.9);
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(17, 24, 39, 0.94);
+  border: 1px solid rgba(226, 232, 240, 0.28);
   border-radius: 0.7rem;
   padding: 0.65rem 0.7rem;
   display: grid;
