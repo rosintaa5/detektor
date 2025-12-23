@@ -697,21 +697,30 @@ export default function HomePage() {
   }, [btcContext.bias, formatPrice, pumpList]);
 
   const scalpQuickList = useMemo(() => {
-    return pumpMathList
-      .filter((item) => item.coin.last < 100 && item.confidencePct >= 70)
+    const candidates = pumpMathList
+      .filter((item) => {
+        const edge = item.upsidePct - item.downsidePct;
+        return (
+          item.coin.last < 100 &&
+          item.confidencePct >= 78 &&
+          item.upsidePct >= 8 &&
+          edge >= 4 &&
+          item.rrLive >= 1.6
+        );
+      })
       .map((item) => {
         const tpTargets = computeTpTargets(item.coin);
         const tp1 = tpTargets[0];
         const tp2 = tpTargets[1];
-        const tpChance = Math.min(99, Math.max(50, Math.round(item.confidencePct + item.rrLive * 5)));
         const edgePct = item.upsidePct - item.downsidePct;
+        const tpChance = Math.min(99, Math.max(60, Math.round(item.confidencePct * 0.6 + edgePct * 2 + item.rrLive * 6)));
 
         const entryNote =
           item.entryGapPct < -3
             ? 'Sudah lari, tunggu retrace tipis'
             : item.entryGapPct <= 1
               ? 'Gap sempit, boleh bid tipis'
-              : 'Masih diskon vs entry, curi start';
+              : 'Masih diskon vs entry, curi start dengan lot terbatas';
 
         return {
           pair: item.coin.pair,
@@ -727,11 +736,13 @@ export default function HomePage() {
           tp1,
           tp2,
           action: item.actionLine,
-          supports: [item.structureNote, item.btcDrag, item.riskNote],
+          supports: [item.structureNote, item.btcDrag, `Edge live ${edgePct.toFixed(1)}%`],
         };
-      })
-      .sort((a, b) => b.confidence - a.confidence)
-      .slice(0, 5);
+      });
+
+    return candidates
+      .sort((a, b) => b.tpChance - a.tpChance || b.edgePct - a.edgePct || b.confidence - a.confidence)
+      .slice(0, 2);
   }, [computeTpTargets, pumpMathList]);
 
   const topPickInsight = useMemo(() => {
@@ -1762,7 +1773,8 @@ export default function HomePage() {
               <div>
                 <h3>SCALP COIN</h3>
                 <p className="muted">
-                  Menu khusus koin murah (&lt; Rp100) dengan persen benar tinggi untuk scalp cepat tanpa perlu lonjakan besar.
+                  Fokus dua koin murah (&lt; Rp100) dengan persen benar tinggi, upside bersih tebal, dan RR sehat—bukan cuma
+                  naik tipis yang habis di biaya.
                 </p>
               </div>
               <span className="badge badge-neutral">Filter harga &lt; 100</span>
