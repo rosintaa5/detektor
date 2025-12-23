@@ -710,7 +710,7 @@ export default function HomePage() {
           item.entryGapPct < -3
             ? 'Sudah lari, tunggu retrace tipis'
             : item.entryGapPct <= 1
-              ? 'Dekat entry, bisa sikat cepat'
+              ? 'Gap sempit, boleh bid tipis'
               : 'Masih diskon vs entry, curi start';
 
         return {
@@ -1760,9 +1760,9 @@ export default function HomePage() {
           <section id="quick-scalp" className="section-card accent-scalp">
             <div className="section-head">
               <div>
-                <h3>Scalp cepat: koin mau pump &lt; Rp100</h3>
+                <h3>SCALP COIN</h3>
                 <p className="muted">
-                  Pilihan kilat dengan persen benar tinggi untuk harga murah—naik dikit bisa langsung jadi profit tebal.
+                  Menu khusus koin murah (&lt; Rp100) dengan persen benar tinggi untuk scalp cepat tanpa perlu lonjakan besar.
                 </p>
               </div>
               <span className="badge badge-neutral">Filter harga &lt; 100</span>
