@@ -83,6 +83,7 @@ export default function HomePage() {
   );
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
+  const [scalpPage, setScalpPage] = useState(1);
   const lastWarningStateRef = useRef<Map<string, string>>(new Map());
   const trackedPairsRef = useRef<Map<string, number>>(new Map());
 
@@ -723,6 +724,8 @@ export default function HomePage() {
               ? 'Gap sempit, boleh bid tipis'
               : 'Masih diskon vs entry, curi start dengan lot terbatas';
 
+        const reasonShort = `${item.structureNote} • Edge ${edgePct.toFixed(1)}% • ${entryNote}`;
+
         return {
           pair: item.coin.pair,
           price: item.coin.last,
@@ -735,6 +738,7 @@ export default function HomePage() {
           liquidity: item.liquidityLabel,
           entryGapPct: item.entryGapPct,
           entryNote,
+          reasonShort,
           tp1,
           tp2,
           action: item.actionLine,
@@ -747,6 +751,18 @@ export default function HomePage() {
         b.priorityScore - a.priorityScore || b.confidence - a.confidence || b.tpChance - a.tpChance || b.edgePct - a.edgePct
       );
   }, [computeTpTargets, pumpMathList]);
+
+  const scalpPageSize = 8;
+  const totalScalpPages = Math.max(1, Math.ceil(scalpQuickList.length / scalpPageSize));
+
+  useEffect(() => {
+    setScalpPage((prev) => Math.min(Math.max(1, prev), totalScalpPages));
+  }, [totalScalpPages]);
+
+  const displayedScalp = useMemo(
+    () => scalpQuickList.slice((scalpPage - 1) * scalpPageSize, scalpPage * scalpPageSize),
+    [scalpPage, scalpPageSize, scalpQuickList]
+  );
 
   const topPickInsight = useMemo(() => {
     if (topPicks.length === 0) {
@@ -1776,8 +1792,8 @@ export default function HomePage() {
               <div>
                 <h3>SCALP COIN</h3>
                 <p className="muted">
-                  Daftar live koin murah (&lt; Rp100) ber-confidence tinggi; urut otomatis dari yang paling akurat di atas dan
-                  bergeser bila muncul kandidat yang lebih kuat.
+                  Tabel live koin murah (&lt; Rp100) ber-confidence tinggi, diurut otomatis berdasarkan skor akurat; gunakan
+                  pagination untuk jelajah banyak kandidat.
                 </p>
               </div>
               <span className="badge badge-neutral">Filter harga &lt; 100</span>
@@ -1786,72 +1802,67 @@ export default function HomePage() {
             {scalpQuickList.length === 0 ? (
               <div className="empty-state small">Belum ada koin murah yang valid untuk scalp cepat.</div>
             ) : (
-              <div className="scalp-grid">
-                {scalpQuickList.map((item, idx) => (
-                  <div key={item.pair} className="scalp-card">
-                    <div className="scalp-head">
-                      <div>
-                        <div className="scalp-pair">
-                          {item.pair.toUpperCase()}{' '}
-                          <span className="scalp-price">({formatPrice(item.price)})</span>
-                        </div>
-                        <div className="scalp-sub">
-                          Likuiditas {item.liquidity} • Edge {item.edgePct.toFixed(1)}%
-                        </div>
-                        <div className="scalp-sub">Prioritas live #{idx + 1} • Skor {item.priorityScore}</div>
-                      </div>
-                      <div className="scalp-conf">
-                        <span className="scalp-priority">Prioritas #{idx + 1}</span>
-                        <div className="scalp-conf-value">{item.confidence}%</div>
-                        <div className="scalp-conf-label">Persen benar</div>
-                        <span className="scalp-conf-grade">RR {item.rrLive.toFixed(2)}x</span>
-                      </div>
-                    </div>
+              <div className="scalp-table-wrap">
+                <table className="scalp-table">
+                  <thead>
+                    <tr>
+                      <th>Prioritas</th>
+                      <th>Pair &amp; harga</th>
+                      <th>Skor</th>
+                      <th>Tembus TP</th>
+                      <th>Alasan singkat</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayedScalp.map((item, idx) => {
+                      const rank = (scalpPage - 1) * scalpPageSize + idx + 1;
+                      return (
+                        <tr key={item.pair}>
+                          <td>
+                            <div className="scalp-rank">#{rank}</div>
+                            <div className="scalp-rank-sub">Skor prioritas {item.priorityScore}</div>
+                          </td>
+                          <td>
+                            <div className="scalp-pair">{item.pair.toUpperCase()}</div>
+                            <div className="scalp-sub">Harga {formatPrice(item.price)} • Likuiditas {item.liquidity}</div>
+                          </td>
+                          <td>
+                            <div className="scalp-score">{item.confidence}% benar</div>
+                            <div className="scalp-sub">RR {item.rrLive.toFixed(2)}x • Upside {item.upsidePct.toFixed(1)}%</div>
+                          </td>
+                          <td>
+                            <div className="scalp-score">{item.tpChance}%</div>
+                            <div className="scalp-sub">TP1 {formatPrice(item.tp1.price)} ({item.tp1.pct.toFixed(1)}%) • TP2 {formatPrice(item.tp2.price)} ({item.tp2.pct.toFixed(1)}%)</div>
+                          </td>
+                          <td>
+                            <div className="scalp-reason">{item.reasonShort}</div>
+                            <div className="scalp-sub">{item.entryNote}</div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
 
-                    <div className="scalp-metrics">
-                      <div className="scalp-metric">
-                        <div className="scalp-metric-label">Upside</div>
-                        <div className="scalp-metric-value">{item.upsidePct.toFixed(1)}%</div>
-                        <div className="scalp-metric-sub">Gap entry {item.entryGapPct.toFixed(1)}%</div>
-                      </div>
-                      <div className="scalp-metric">
-                        <div className="scalp-metric-label">Tembus TP</div>
-                        <div className="scalp-metric-value">{item.tpChance}%</div>
-                        <div className="scalp-metric-sub">Prediksi cepat</div>
-                      </div>
-                      <div className="scalp-metric">
-                        <div className="scalp-metric-label">Entry hint</div>
-                        <div className="scalp-metric-value">{item.entryNote}</div>
-                        <div className="scalp-metric-sub">RR {item.rrLive.toFixed(2)}x</div>
-                      </div>
-                      <div className="scalp-metric">
-                        <div className="scalp-metric-label">Skor prioritas</div>
-                        <div className="scalp-metric-value">{item.priorityScore}</div>
-                        <div className="scalp-metric-sub">Akurasi tinggi didahulukan</div>
-                      </div>
-                    </div>
-
-                    <div className="scalp-tp">
-                      <div className="scalp-tp-title">Tangga TP untuk scalp</div>
-                      <div className="scalp-tp-steps">
-                        <div className="scalp-tp-pill">TP1 {formatPrice(item.tp1.price)} ({item.tp1.pct.toFixed(1)}%)</div>
-                        <div className="scalp-tp-pill">TP2 {formatPrice(item.tp2.price)} ({item.tp2.pct.toFixed(1)}%)</div>
-                      </div>
-                    </div>
-
-                    <div className="scalp-action">
-                      <div className="scalp-action-title">Alasan singkat</div>
-                      <div className="scalp-action-body">{item.action}</div>
-                      <div className="scalp-supports">
-                        {item.supports.map((note, idx) => (
-                          <span key={`${item.pair}-support-${idx}`} className="scalp-support-chip">
-                            {note}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
+                <div className="scalp-pagination">
+                  <button
+                    className="scalp-page-btn"
+                    onClick={() => setScalpPage((p) => Math.max(1, p - 1))}
+                    disabled={scalpPage === 1}
+                  >
+                    &larr; Sebelumnya
+                  </button>
+                  <div className="scalp-page-indicator">
+                    Halaman {scalpPage} / {totalScalpPages}
                   </div>
-                ))}
+                  <button
+                    className="scalp-page-btn"
+                    onClick={() => setScalpPage((p) => Math.min(totalScalpPages, p + 1))}
+                    disabled={scalpPage === totalScalpPages}
+                  >
+                    Selanjutnya &rarr;
+                  </button>
+                </div>
               </div>
             )}
           </section>

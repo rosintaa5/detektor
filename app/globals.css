@@ -1155,6 +1155,95 @@ a {
   gap: 0.9rem;
 }
 
+.scalp-table-wrap {
+  background: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(226, 232, 240, 0.24);
+  border-radius: 0.9rem;
+  padding: 0.2rem;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.25);
+}
+
+.scalp-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #e2e8f0;
+  font-size: 0.95rem;
+}
+
+.scalp-table th,
+.scalp-table td {
+  padding: 0.75rem 0.85rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.14);
+}
+
+.scalp-table thead {
+  background: linear-gradient(90deg, rgba(30, 41, 59, 0.9), rgba(51, 65, 85, 0.7));
+}
+
+.scalp-table th {
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  color: #cbd5e1;
+  font-weight: 700;
+}
+
+.scalp-table tr:hover td {
+  background: rgba(226, 232, 240, 0.05);
+}
+
+.scalp-rank {
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.scalp-rank-sub {
+  font-size: 0.82rem;
+  color: #cbd5e1;
+}
+
+.scalp-score {
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.scalp-reason {
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.scalp-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.75rem;
+}
+
+.scalp-page-btn {
+  background: rgba(226, 232, 240, 0.14);
+  border: 1px solid rgba(226, 232, 240, 0.28);
+  color: #f8fafc;
+  border-radius: 0.65rem;
+  padding: 0.45rem 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.scalp-page-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.scalp-page-btn:not(:disabled):hover {
+  background: rgba(226, 232, 240, 0.22);
+}
+
+.scalp-page-indicator {
+  font-weight: 700;
+  color: #cbd5e1;
+}
+
 .scalp-card {
   background: rgba(15, 23, 42, 0.7);
   border: 1px solid rgba(226, 232, 240, 0.2);
