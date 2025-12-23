@@ -10,6 +10,30 @@ interface ApiResponse {
   coins: CoinSignal[];
 }
 
+interface DepthLevel {
+  price: number;
+  volume: number;
+  value: number;
+}
+
+interface DepthResponse {
+  buy: Array<[string | number, string | number]>;
+  sell: Array<[string | number, string | number]>;
+}
+
+interface DepthSignal {
+  pair: string;
+  last: number;
+  score: number;
+  rangePct: number;
+  posInRange: number;
+  bidDominance: number;
+  wallValue: number;
+  wallPrice: number;
+  wallNear: boolean;
+  reason: string;
+}
+
 type PredictionDirection = 'bullish' | 'bearish' | 'netral';
 
 const PIN_STORAGE_KEY = 'sinta-pin-authorized';
@@ -84,6 +108,9 @@ export default function HomePage() {
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
   const [scalpPage, setScalpPage] = useState(1);
+  const [depthSignals, setDepthSignals] = useState<DepthSignal[]>([]);
+  const [depthLoading, setDepthLoading] = useState(false);
+  const [depthError, setDepthError] = useState<string | null>(null);
   const lastWarningStateRef = useRef<Map<string, string>>(new Map());
   const trackedPairsRef = useRef<Map<string, number>>(new Map());
 
@@ -149,6 +176,65 @@ export default function HomePage() {
       return `${days}h lalu`;
     },
     [nowTs]
+  );
+
+  const parseDepthLevels = useCallback((raw: DepthResponse['buy']) => {
+    return (raw ?? [])
+      .map(([price, volume]) => {
+        const priceNum = Number(price);
+        const volumeNum = Number(volume);
+        const value = priceNum * volumeNum;
+        if (!Number.isFinite(priceNum) || !Number.isFinite(volumeNum)) return null;
+        return { price: priceNum, volume: volumeNum, value };
+      })
+      .filter((item): item is DepthLevel => Boolean(item));
+  }, []);
+
+  const buildDepthSignal = useCallback(
+    (coin: CoinSignal, depth: DepthResponse): DepthSignal | null => {
+      const bids = parseDepthLevels(depth.buy).slice(0, 12);
+      const asks = parseDepthLevels(depth.sell).slice(0, 12);
+
+      if (bids.length === 0 || asks.length === 0) return null;
+
+      const bidValue = bids.reduce((sum, level) => sum + level.value, 0);
+      const askValue = asks.reduce((sum, level) => sum + level.value, 0);
+      const totalValue = bidValue + askValue;
+      const bidDominance = totalValue > 0 ? (bidValue / totalValue) * 100 : 50;
+
+      const wallLevel = bids.reduce((best, level) => (level.value > best.value ? level : best), bids[0]);
+      const avgBid = bidValue / bids.length;
+      const wallStrength = avgBid > 0 ? wallLevel.value / avgBid : 1;
+      const wallNear = Math.abs(wallLevel.price - coin.last) / coin.last <= 0.015;
+
+      const rangePct = coin.low > 0 ? ((coin.high - coin.low) / coin.low) * 100 : 0;
+      const posInRange = coin.range > 0 ? coin.posInRange : 0;
+
+      const tightScore = Math.max(0, 12 - rangePct) * 1.4;
+      const dominanceScore = Math.max(0, bidDominance - 50) * 0.9;
+      const wallScore = Math.min(12, wallStrength * 4);
+      const centerScore = posInRange >= 0.42 && posInRange <= 0.6 ? 6 : 0;
+      const proximityScore = wallNear ? 6 : 0;
+      const score = Math.min(99, Math.round(40 + tightScore + dominanceScore + wallScore + centerScore + proximityScore));
+
+      const oscillationLabel =
+        rangePct <= 6 ? 'Bolak balik ketat' : rangePct <= 10 ? 'Bolak balik sedang' : 'Range melebar';
+      const wallLabel = wallNear ? 'wall dekat harga' : 'wall bawah harga';
+
+      return {
+        pair: coin.pair,
+        last: coin.last,
+        score,
+        rangePct,
+        posInRange,
+        bidDominance,
+        wallValue: wallLevel.value,
+        wallPrice: wallLevel.price,
+        wallNear,
+        reason: `Bid ${bidDominance.toFixed(0)}% • ${oscillationLabel} • ${wallLabel}`,
+      };
+    },
+    [parseDepthLevels]
   );
 
   const buildWarningGuidance = useCallback(
@@ -763,6 +849,80 @@ export default function HomePage() {
     () => scalpQuickList.slice((scalpPage - 1) * scalpPageSize, scalpPage * scalpPageSize),
     [scalpPage, scalpPageSize, scalpQuickList]
   );
+
+  const depthCandidates = useMemo(() => {
+    return coins
+      .map((coin) => {
+        const rangePct = coin.low > 0 ? ((coin.high - coin.low) / coin.low) * 100 : 0;
+        return { coin, rangePct };
+      })
+      .filter(({ coin, rangePct }) => {
+        const inRange = coin.posInRange >= 0.35 && coin.posInRange <= 0.65;
+        return (
+          coin.volIdr >= 80_000_000 &&
+          rangePct > 0 &&
+          rangePct <= 12 &&
+          inRange &&
+          coin.last > 0
+        );
+      })
+      .sort((a, b) => b.coin.volIdr - a.coin.volIdr || a.rangePct - b.rangePct)
+      .slice(0, 12)
+      .map(({ coin }) => coin);
+  }, [coins]);
+
+  useEffect(() => {
+    if (!isAuthorized) return undefined;
+    if (depthCandidates.length === 0) {
+      setDepthSignals([]);
+      setDepthError(null);
+      return undefined;
+    }
+
+    let isActive = true;
+    const controller = new AbortController();
+
+    const run = async () => {
+      try {
+        setDepthLoading(true);
+        setDepthError(null);
+        const results = await Promise.allSettled(
+          depthCandidates.map(async (coin) => {
+            const res = await fetch(`/api/depth/${coin.pair}`, {
+              signal: controller.signal,
+            });
+            if (!res.ok) {
+              throw new Error(`Depth ${coin.pair} ${res.status}`);
+            }
+            const data = (await res.json()) as DepthResponse;
+            const signal = buildDepthSignal(coin, data);
+            return signal;
+          })
+        );
+
+        if (!isActive) return;
+
+        const signals = results
+          .flatMap((result) => (result.status === 'fulfilled' && result.value ? [result.value] : []))
+          .sort((a, b) => b.score - a.score);
+
+        setDepthSignals(signals);
+      } catch (err) {
+        if (!isActive) return;
+        if ((err as Error).name === 'AbortError') return;
+        console.error(err);
+        setDepthError('Gagal mengambil data orderbook.');
+      } finally {
+        if (isActive) setDepthLoading(false);
+      }
+    };
+
+    run();
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, [buildDepthSignal, depthCandidates, isAuthorized]);
 
   const topPickInsight = useMemo(() => {
     if (topPicks.length === 0) {
@@ -1863,6 +2023,73 @@ export default function HomePage() {
                     Selanjutnya &rarr;
                   </button>
                 </div>
+              </div>
+            )}
+          </section>
+
+          <section id="depth-radar" className="section-card depth-section">
+            <div className="section-head">
+              <div>
+                <h3>Radar Orderbook Meledak</h3>
+                <p className="muted">
+                  Deteksi koin yang harga bolak-balik dalam range sempit, tapi bid besar menumpuk. Kombinasi ini sering jadi
+                  tanda koin siap meledak jika ada trigger.
+                </p>
+              </div>
+              <span className="badge badge-neutral">Sumber: /api/depth + /api/tickers</span>
+            </div>
+
+            {depthLoading ? (
+              <div className="empty-state small">Memuat data orderbook terbaru...</div>
+            ) : depthError ? (
+              <div className="empty-state small">{depthError}</div>
+            ) : depthSignals.length === 0 ? (
+              <div className="empty-state small">Belum ada kandidat orderbook meledak yang memenuhi syarat.</div>
+            ) : (
+              <div className="depth-table-wrap">
+                <table className="depth-table">
+                  <thead>
+                    <tr>
+                      <th>Prioritas</th>
+                      <th>Pair &amp; harga</th>
+                      <th>Skor meledak</th>
+                      <th>Bid dominance</th>
+                      <th>Bid wall</th>
+                      <th>Alasan singkat</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {depthSignals.map((item, idx) => (
+                      <tr key={item.pair}>
+                        <td>
+                          <div className="depth-rank">#{idx + 1}</div>
+                          <div className="depth-sub">Range {item.rangePct.toFixed(1)}%</div>
+                        </td>
+                        <td>
+                          <div className="depth-pair">{item.pair.toUpperCase()}</div>
+                          <div className="depth-sub">Harga {formatPrice(item.last)}</div>
+                        </td>
+                        <td>
+                          <div className="depth-score">{item.score}</div>
+                          <div className="depth-sub">Posisi {Math.round(item.posInRange * 100)}%</div>
+                        </td>
+                        <td>
+                          <div className="depth-score">{item.bidDominance.toFixed(0)}%</div>
+                          <div className="depth-sub">Bid lebih berat</div>
+                        </td>
+                        <td>
+                          <div className="depth-score">{formatRupiah(item.wallValue)}</div>
+                          <div className="depth-sub">
+                            di {formatPrice(item.wallPrice)} {item.wallNear ? 'dekat harga' : ''}
+                          </div>
+                        </td>
+                        <td>
+                          <div className="depth-reason">{item.reason}</div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </section>
