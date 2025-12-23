@@ -714,6 +714,7 @@ export default function HomePage() {
         const tp2 = tpTargets[1];
         const edgePct = item.upsidePct - item.downsidePct;
         const tpChance = Math.min(99, Math.max(60, Math.round(item.confidencePct * 0.6 + edgePct * 2 + item.rrLive * 6)));
+        const priorityScore = Math.round(tpChance * 0.55 + item.confidencePct * 0.3 + edgePct * 1.8 + item.rrLive * 7);
 
         const entryNote =
           item.entryGapPct < -3
@@ -730,6 +731,7 @@ export default function HomePage() {
           rrLive: item.rrLive,
           upsidePct: item.upsidePct,
           edgePct,
+          priorityScore,
           liquidity: item.liquidityLabel,
           entryGapPct: item.entryGapPct,
           entryNote,
@@ -741,8 +743,9 @@ export default function HomePage() {
       });
 
     return candidates
-      .sort((a, b) => b.tpChance - a.tpChance || b.edgePct - a.edgePct || b.confidence - a.confidence)
-      .slice(0, 2);
+      .sort((a, b) =>
+        b.priorityScore - a.priorityScore || b.confidence - a.confidence || b.tpChance - a.tpChance || b.edgePct - a.edgePct
+      );
   }, [computeTpTargets, pumpMathList]);
 
   const topPickInsight = useMemo(() => {
@@ -1773,8 +1776,8 @@ export default function HomePage() {
               <div>
                 <h3>SCALP COIN</h3>
                 <p className="muted">
-                  Fokus dua koin murah (&lt; Rp100) dengan persen benar tinggi, upside bersih tebal, dan RR sehat—bukan cuma
-                  naik tipis yang habis di biaya.
+                  Daftar live koin murah (&lt; Rp100) ber-confidence tinggi; urut otomatis dari yang paling akurat di atas dan
+                  bergeser bila muncul kandidat yang lebih kuat.
                 </p>
               </div>
               <span className="badge badge-neutral">Filter harga &lt; 100</span>
@@ -1784,7 +1787,7 @@ export default function HomePage() {
               <div className="empty-state small">Belum ada koin murah yang valid untuk scalp cepat.</div>
             ) : (
               <div className="scalp-grid">
-                {scalpQuickList.map((item) => (
+                {scalpQuickList.map((item, idx) => (
                   <div key={item.pair} className="scalp-card">
                     <div className="scalp-head">
                       <div>
@@ -1795,8 +1798,10 @@ export default function HomePage() {
                         <div className="scalp-sub">
                           Likuiditas {item.liquidity} • Edge {item.edgePct.toFixed(1)}%
                         </div>
+                        <div className="scalp-sub">Prioritas live #{idx + 1} • Skor {item.priorityScore}</div>
                       </div>
                       <div className="scalp-conf">
+                        <span className="scalp-priority">Prioritas #{idx + 1}</span>
                         <div className="scalp-conf-value">{item.confidence}%</div>
                         <div className="scalp-conf-label">Persen benar</div>
                         <span className="scalp-conf-grade">RR {item.rrLive.toFixed(2)}x</span>
@@ -1818,6 +1823,11 @@ export default function HomePage() {
                         <div className="scalp-metric-label">Entry hint</div>
                         <div className="scalp-metric-value">{item.entryNote}</div>
                         <div className="scalp-metric-sub">RR {item.rrLive.toFixed(2)}x</div>
+                      </div>
+                      <div className="scalp-metric">
+                        <div className="scalp-metric-label">Skor prioritas</div>
+                        <div className="scalp-metric-value">{item.priorityScore}</div>
+                        <div className="scalp-metric-sub">Akurasi tinggi didahulukan</div>
                       </div>
                     </div>
 
