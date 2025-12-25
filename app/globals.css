@@ -589,6 +589,63 @@ a {
   color: #fca5a5;
 }
 
+.pump-orderbook {
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(226, 232, 240, 0.26);
+  border-radius: 0.75rem;
+  padding: 0.7rem 0.75rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.pump-orderbook-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #c7d2fe;
+  letter-spacing: 0.02em;
+}
+
+.pump-orderbook-main {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.6rem;
+}
+
+.orderbook-metric {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(226, 232, 240, 0.18);
+  border-radius: 0.7rem;
+  padding: 0.55rem 0.6rem;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.orderbook-label {
+  font-size: 0.78rem;
+  color: #bae6fd;
+  letter-spacing: 0.02em;
+}
+
+.orderbook-value {
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.orderbook-sub {
+  font-size: 0.78rem;
+  color: #cbd5e1;
+}
+
+.orderbook-reason {
+  font-size: 0.82rem;
+  color: #e2e8f0;
+}
+
+.orderbook-empty {
+  font-size: 0.82rem;
+  color: #cbd5e1;
+}
+
 .risk-danger {
   border-color: rgba(248, 113, 113, 0.55);
   background: linear-gradient(135deg, rgba(248, 113, 113, 0.15), rgba(15, 23, 42, 0.9));

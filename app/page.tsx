@@ -34,6 +34,12 @@ interface DepthSignal {
   reason: string;
 }
 
+interface PumpOrderbookInsight extends DepthSignal {
+  buyPressure: string;
+  activityLabel: string;
+  momentumLabel: string;
+}
+
 type PredictionDirection = 'bullish' | 'bearish' | 'netral';
 
 const PIN_STORAGE_KEY = 'sinta-pin-authorized';
@@ -112,6 +118,9 @@ export default function HomePage() {
   const [depthWatchSignals, setDepthWatchSignals] = useState<DepthSignal[]>([]);
   const [depthLoading, setDepthLoading] = useState(false);
   const [depthError, setDepthError] = useState<string | null>(null);
+  const [pumpOrderbookMap, setPumpOrderbookMap] = useState<Record<string, PumpOrderbookInsight>>({});
+  const [pumpOrderbookLoading, setPumpOrderbookLoading] = useState(false);
+  const [pumpOrderbookError, setPumpOrderbookError] = useState<string | null>(null);
   const lastWarningStateRef = useRef<Map<string, string>>(new Map());
   const trackedPairsRef = useRef<Map<string, number>>(new Map());
 
@@ -236,6 +245,41 @@ export default function HomePage() {
       };
     },
     [parseDepthLevels]
+  );
+
+  const buildPumpOrderbookInsight = useCallback(
+    (coin: CoinSignal, depth: DepthResponse): PumpOrderbookInsight | null => {
+      const base = buildDepthSignal(coin, depth);
+      if (!base) return null;
+
+      const buyPressure =
+        base.bidDominance >= 62 ? 'Bid sangat dominan' : base.bidDominance >= 55 ? 'Bid condong' : 'Bid tipis';
+
+      const activityLabel =
+        coin.volIdr >= 5_000_000_000
+          ? 'Aktivitas ramai'
+          : coin.volIdr >= 1_000_000_000
+            ? 'Aktivitas aktif'
+            : coin.volIdr >= 300_000_000
+              ? 'Aktivitas sedang'
+              : 'Aktivitas sepi';
+
+      const momentumLabel =
+        coin.moveFromLowPct >= 18
+          ? 'Momentum kencang'
+          : coin.moveFromLowPct >= 8
+            ? 'Momentum naik'
+            : 'Momentum awal';
+
+      return {
+        ...base,
+        buyPressure,
+        activityLabel,
+        momentumLabel,
+        reason: `${buyPressure} (${base.bidDominance.toFixed(0)}%) • ${activityLabel} • ${momentumLabel}`,
+      };
+    },
+    [buildDepthSignal]
   );
 
   const buildWarningGuidance = useCallback(
@@ -784,6 +828,11 @@ export default function HomePage() {
       .sort((a, b) => b.score - a.score);
   }, [btcContext.bias, formatPrice, pumpList]);
 
+  const pumpOrderbookTargets = useMemo(
+    () => pumpMathList.slice(0, 4).map((item) => item.coin),
+    [pumpMathList]
+  );
+
   const scalpQuickList = useMemo(() => {
     const candidates = pumpMathList
       .filter((item) => {
@@ -851,6 +900,61 @@ export default function HomePage() {
     [scalpPage, scalpPageSize, scalpQuickList]
   );
 
+  useEffect(() => {
+    if (!isAuthorized) return undefined;
+    if (pumpOrderbookTargets.length === 0) {
+      setPumpOrderbookMap({});
+      setPumpOrderbookError(null);
+      return undefined;
+    }
+
+    let isActive = true;
+    const controller = new AbortController();
+
+    const run = async () => {
+      try {
+        setPumpOrderbookLoading(true);
+        setPumpOrderbookError(null);
+        const results = await Promise.allSettled(
+          pumpOrderbookTargets.map(async (coin) => {
+            const res = await fetch(`/api/depth/${coin.pair}`, {
+              signal: controller.signal,
+            });
+            if (!res.ok) {
+              throw new Error(`Depth ${coin.pair} ${res.status}`);
+            }
+            const data = (await res.json()) as DepthResponse;
+            return buildPumpOrderbookInsight(coin, data);
+          })
+        );
+
+        if (!isActive) return;
+
+        const nextMap: Record<string, PumpOrderbookInsight> = {};
+        results.forEach((result) => {
+          if (result.status === 'fulfilled' && result.value) {
+            nextMap[result.value.pair] = result.value;
+          }
+        });
+        setPumpOrderbookMap(nextMap);
+      } catch (err) {
+        if (!isActive) return;
+        if ((err as Error).name === 'AbortError') return;
+        console.error(err);
+        setPumpOrderbookError('Orderbook pump gagal dimuat.');
+        setPumpOrderbookMap({});
+      } finally {
+        if (isActive) setPumpOrderbookLoading(false);
+      }
+    };
+
+    run();
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, [buildPumpOrderbookInsight, isAuthorized, pumpOrderbookTargets]);
+
   const depthCandidates = useMemo(() => {
     return coins
       .map((coin) => {
@@ -871,6 +975,175 @@ export default function HomePage() {
       .slice(0, 12)
       .map(({ coin }) => coin);
   }, [coins]);
+
+  const renderPumpMathCard = useCallback(
+    (item: (typeof pumpMathList)[number], includeOrderbook: boolean) => {
+      const edgePct = item.upsidePct - item.downsidePct;
+      const tpTargets = computeTpTargets(item.coin);
+      const buyLine =
+        item.rrLive >= 2
+          ? `Layak dibeli: upside ${item.upsidePct.toFixed(1)}% & RR ${item.rrLive.toFixed(2)}x (RR sehat).`
+          : `Masih layak: upside ${item.upsidePct.toFixed(1)}% & RR ${item.rrLive.toFixed(2)}x (cukup).`;
+
+      const timingLine =
+        item.entryGapPct < -2
+          ? 'Beli hati-hati: harga sudah jauh di atas entry, tunggu retrace tipis.'
+          : item.entryGapPct <= 1
+            ? 'Beli dulu kecil: harga dekat entry, momentum jalan.'
+            : 'Boleh curi start: harga masih di bawah entry/diskon.';
+
+      const paceLine =
+        item.heatPct >= 80
+          ? 'Cicil kecil: heat tinggi, hindari FOMO.'
+          : item.liquidityLabel === 'Likuid tipis'
+            ? 'Cicil: likuiditas tipis, jangan all-in.'
+            : 'Bisa cicil bertahap: likuiditas cukup dan heat aman.';
+
+      const cautionLine = `Hati-hati: ${item.riskNote.toLowerCase()}.`;
+      const tpChance = Math.min(99, Math.max(35, item.confidencePct));
+      const tpLine = `Prediksi tembus TP: ${tpChance}% (gabungan score & bias BTC).`;
+      const supportLine = `Pendukung: ${item.structureNote}; ${item.btcDrag}; Upside ${item.upsidePct.toFixed(
+        1
+      )}% vs buffer ${item.downsidePct.toFixed(1)}%.`;
+
+      const orderbook = includeOrderbook ? pumpOrderbookMap[item.coin.pair] : undefined;
+      const orderbookFallback = pumpOrderbookLoading
+        ? 'Memuat orderbook...'
+        : pumpOrderbookError
+          ? pumpOrderbookError
+          : 'Orderbook belum tersedia.';
+
+      return (
+        <div key={item.coin.pair} className={`pump-math-card bias-${item.bias}`}>
+          <div className="pump-math-body">
+            <div className="pump-math-head">
+              <div className="pump-math-title">
+                <div className="pump-math-pair">
+                  {item.coin.pair.toUpperCase()}{' '}
+                  <span className="pump-math-price">({formatPrice(item.coin.last)})</span>
+                </div>
+                <div className="pump-math-sub">
+                  Likuiditas {item.liquidityLabel} • Volume {formatter.format(item.coin.volIdr)} IDR
+                </div>
+              </div>
+              <div className="confidence-box">
+                <div className="confidence-value">{item.confidencePct}%</div>
+                <div className="confidence-label">Yakin pump</div>
+                <span className="confidence-grade">{item.convictionLabel}</span>
+              </div>
+            </div>
+
+            <div className="pump-math-quick">
+              <div className="quick-item">
+                <div className="quick-label">Upside → TP</div>
+                <div className="quick-value">{item.upsidePct.toFixed(1)}%</div>
+                <div className="quick-sub">RR live {item.rrLive.toFixed(2)}x</div>
+              </div>
+              <div className="quick-item">
+                <div className="quick-label">Momentum 24j</div>
+                <div className="quick-value">{item.momentumPct.toFixed(1)}%</div>
+                <div className="quick-sub">Heat range {item.heatPct.toFixed(1)}%</div>
+              </div>
+              <div className="quick-item">
+                <div className="quick-label">Buffer SL</div>
+                <div className="quick-value">{item.downsidePct.toFixed(1)}%</div>
+                <div className="quick-sub">{item.riskNote}</div>
+              </div>
+              <div className="quick-item">
+                <div className="quick-label">Edge live</div>
+                <div className="quick-value">{edgePct.toFixed(1)}%</div>
+                <div className="quick-sub">Upside - downside</div>
+              </div>
+            </div>
+
+            <div className="pump-math-forecast">
+              <div className="forecast-title">Perkiraan tembus TP</div>
+              <div className="forecast-value">{tpChance}%</div>
+              <div className="forecast-sub">{tpLine}</div>
+              <ul className="forecast-tp-list">
+                {tpTargets.map((tp, idx) => (
+                  <li key={`${item.coin.pair}-tp-${idx}`}>
+                    TP {idx + 1}: {formatPrice(tp.price)} ({tp.pct.toFixed(1)}%)
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="pump-math-support">
+              <div className="support-title">Pendukung kuat</div>
+              <div className="support-chips">
+                {[
+                  item.structureNote,
+                  item.btcDrag,
+                  `Upside ${item.upsidePct.toFixed(1)}% vs buffer ${item.downsidePct.toFixed(1)}%`,
+                ].map((note, idx) => (
+                  <span key={`${item.coin.pair}-support-${idx}`} className="support-chip">
+                    {note}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="pump-math-action">
+              {item.actionLine}
+              <div className="pump-math-hint">
+                Entry gap {item.entryGapPct.toFixed(1)}% • {item.historyNote}
+              </div>
+              <div className="pump-math-verdict">
+                <div className="verdict-line">{tpLine}</div>
+                <div className="verdict-line">{supportLine}</div>
+                <div className="verdict-line">{buyLine}</div>
+                <div className="verdict-line">{timingLine}</div>
+                <div className="verdict-line">{paceLine}</div>
+                <div className="verdict-line verdict-caution">{cautionLine}</div>
+              </div>
+            </div>
+
+            {includeOrderbook && (
+              <div className="pump-orderbook">
+                <div className="pump-orderbook-title">Order buy/sell & aktivitas market</div>
+                {orderbook ? (
+                  <>
+                    <div className="pump-orderbook-main">
+                      <div className="orderbook-metric">
+                        <div className="orderbook-label">Dominasi bid</div>
+                        <div className="orderbook-value">{orderbook.bidDominance.toFixed(0)}%</div>
+                        <div className="orderbook-sub">{orderbook.buyPressure}</div>
+                      </div>
+                      <div className="orderbook-metric">
+                        <div className="orderbook-label">Bid wall</div>
+                        <div className="orderbook-value">{formatRupiah(orderbook.wallValue)}</div>
+                        <div className="orderbook-sub">
+                          di {formatPrice(orderbook.wallPrice)} {orderbook.wallNear ? '(dekat harga)' : ''}
+                        </div>
+                      </div>
+                      <div className="orderbook-metric">
+                        <div className="orderbook-label">Aktivitas market</div>
+                        <div className="orderbook-value">{orderbook.activityLabel}</div>
+                        <div className="orderbook-sub">{orderbook.momentumLabel}</div>
+                      </div>
+                    </div>
+                    <div className="orderbook-reason">{orderbook.reason}</div>
+                  </>
+                ) : (
+                  <div className="orderbook-empty">{orderbookFallback}</div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    },
+    [
+      computeTpTargets,
+      formatPrice,
+      formatRupiah,
+      formatter,
+      pumpOrderbookError,
+      pumpOrderbookLoading,
+      pumpOrderbookMap,
+    ]
+  );
 
   useEffect(() => {
     if (!isAuthorized) return undefined;
@@ -1626,126 +1899,27 @@ export default function HomePage() {
               <div className="empty-state small">Menunggu sinyal mau pump untuk dihitung.</div>
             ) : (
               <div className="pump-math-grid">
-                {pumpMathList.slice(0, 4).map((item) => (
-                  <div key={item.coin.pair} className={`pump-math-card bias-${item.bias}`}>
-                    {(() => {
-                      const edgePct = item.upsidePct - item.downsidePct;
-                      const tpTargets = computeTpTargets(item.coin);
-                      const buyLine =
-                        item.rrLive >= 2
-                          ? `Layak dibeli: upside ${item.upsidePct.toFixed(1)}% & RR ${item.rrLive.toFixed(2)}x (RR sehat).`
-                          : `Masih layak: upside ${item.upsidePct.toFixed(1)}% & RR ${item.rrLive.toFixed(2)}x (cukup).`;
+                {pumpMathList.slice(0, 4).map((item) => renderPumpMathCard(item, false))}
+              </div>
+            )}
+          </section>
 
-                      const timingLine =
-                        item.entryGapPct < -2
-                          ? 'Beli hati-hati: harga sudah jauh di atas entry, tunggu retrace tipis.'
-                          : item.entryGapPct <= 1
-                            ? 'Beli dulu kecil: harga dekat entry, momentum jalan.'
-                            : 'Boleh curi start: harga masih di bawah entry/diskon.';
+          <section id="pump-orderbook" className="section-card accent-math">
+            <div className="section-head">
+              <div>
+                <h3>Lab Hitung Mau Pump + Orderbook</h3>
+                <p className="muted">
+                  Versi Lab Hitung Mau Pump yang ditambah analisis order buy/sell dan aktivitas market dari depth API.
+                </p>
+              </div>
+              <span className="badge badge-strong">Orderbook live</span>
+            </div>
 
-                      const paceLine =
-                        item.heatPct >= 80
-                          ? 'Cicil kecil: heat tinggi, hindari FOMO.'
-                          : item.liquidityLabel === 'Likuid tipis'
-                            ? 'Cicil: likuiditas tipis, jangan all-in.'
-                            : 'Bisa cicil bertahap: likuiditas cukup dan heat aman.';
-
-                      const cautionLine = `Hati-hati: ${item.riskNote.toLowerCase()}.`;
-                      const momentumLine = `Momentum ${item.momentumPct.toFixed(1)}% & heat ${item.heatPct.toFixed(1)}%`;
-                      const liquidityLine = `Likuiditas ${item.liquidityLabel.toLowerCase()} • Volume ${formatter.format(item.coin.volIdr)} IDR`;
-                      const tpChance = Math.min(99, Math.max(35, item.confidencePct));
-                      const tpLine = `Prediksi tembus TP: ${tpChance}% (gabungan score & bias BTC).`;
-                      const supportLine = `Pendukung: ${item.structureNote}; ${item.btcDrag}; Upside ${item.upsidePct.toFixed(
-                        1
-                      )}% vs buffer ${item.downsidePct.toFixed(1)}%.`;
-
-                      return (
-                        <div className="pump-math-body" key={`${item.coin.pair}-body`}>
-                          <div className="pump-math-head">
-                            <div className="pump-math-title">
-                              <div className="pump-math-pair">
-                                {item.coin.pair.toUpperCase()}{' '}
-                                <span className="pump-math-price">({formatPrice(item.coin.last)})</span>
-                              </div>
-                              <div className="pump-math-sub">
-                                Likuiditas {item.liquidityLabel} • Volume {formatter.format(item.coin.volIdr)} IDR
-                              </div>
-                            </div>
-                            <div className="confidence-box">
-                              <div className="confidence-value">{item.confidencePct}%</div>
-                              <div className="confidence-label">Yakin pump</div>
-                              <span className="confidence-grade">{item.convictionLabel}</span>
-                            </div>
-                          </div>
-
-                          <div className="pump-math-quick">
-                            <div className="quick-item">
-                              <div className="quick-label">Upside → TP</div>
-                              <div className="quick-value">{item.upsidePct.toFixed(1)}%</div>
-                              <div className="quick-sub">RR live {item.rrLive.toFixed(2)}x</div>
-                            </div>
-                            <div className="quick-item">
-                              <div className="quick-label">Momentum 24j</div>
-                              <div className="quick-value">{item.momentumPct.toFixed(1)}%</div>
-                              <div className="quick-sub">Heat range {item.heatPct.toFixed(1)}%</div>
-                            </div>
-                            <div className="quick-item">
-                              <div className="quick-label">Buffer SL</div>
-                              <div className="quick-value">{item.downsidePct.toFixed(1)}%</div>
-                              <div className="quick-sub">{item.riskNote}</div>
-                            </div>
-                            <div className="quick-item">
-                              <div className="quick-label">Edge live</div>
-                              <div className="quick-value">{edgePct.toFixed(1)}%</div>
-                              <div className="quick-sub">Upside - downside</div>
-                            </div>
-                          </div>
-
-                          <div className="pump-math-forecast">
-                            <div className="forecast-title">Perkiraan tembus TP</div>
-                            <div className="forecast-value">{tpChance}%</div>
-                            <div className="forecast-sub">{tpLine}</div>
-                            <ul className="forecast-tp-list">
-                              {tpTargets.map((tp, idx) => (
-                                <li key={`${item.coin.pair}-tp-${idx}`}>
-                                  TP {idx + 1}: {formatPrice(tp.price)} ({tp.pct.toFixed(1)}%)
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-
-                          <div className="pump-math-support">
-                            <div className="support-title">Pendukung kuat</div>
-                            <div className="support-chips">
-                              {[
-                                item.structureNote,
-                                item.btcDrag,
-                                `Upside ${item.upsidePct.toFixed(1)}% vs buffer ${item.downsidePct.toFixed(1)}%`,
-                              ].map((note, idx) => (
-                                <span key={`${item.coin.pair}-support-${idx}`} className="support-chip">
-                                  {note}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="pump-math-action">
-                            {item.actionLine}
-                            <div className="pump-math-hint">Entry gap {item.entryGapPct.toFixed(1)}% • {item.historyNote}</div>
-                            <div className="pump-math-verdict">
-                              <div className="verdict-line">{tpLine}</div>
-                              <div className="verdict-line">{supportLine}</div>
-                              <div className="verdict-line">{buyLine}</div>
-                              <div className="verdict-line">{timingLine}</div>
-                              <div className="verdict-line">{paceLine}</div>
-                              <div className="verdict-line verdict-caution">{cautionLine}</div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                ))}
+            {pumpMathList.length === 0 ? (
+              <div className="empty-state small">Menunggu sinyal mau pump untuk dianalisis.</div>
+            ) : (
+              <div className="pump-math-grid">
+                {pumpMathList.slice(0, 4).map((item) => renderPumpMathCard(item, true))}
               </div>
             )}
           </section>
