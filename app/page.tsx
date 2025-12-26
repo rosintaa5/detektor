@@ -38,6 +38,10 @@ interface PumpOrderbookInsight extends DepthSignal {
   buyPressure: string;
   activityLabel: string;
   momentumLabel: string;
+  bidWallPrice: number;
+  bidWallValue: number;
+  askWallPrice: number;
+  askWallValue: number;
 }
 
 type PredictionDirection = 'bullish' | 'bearish' | 'netral';
@@ -252,6 +256,17 @@ export default function HomePage() {
       const base = buildDepthSignal(coin, depth);
       if (!base) return null;
 
+      const bids = parseDepthLevels(depth.buy).slice(0, 20);
+      const asks = parseDepthLevels(depth.sell).slice(0, 20);
+      const bidWallLevel =
+        bids.length > 0
+          ? bids.reduce((best, level) => (level.value > best.value ? level : best), bids[0])
+          : null;
+      const askWallLevel =
+        asks.length > 0
+          ? asks.reduce((best, level) => (level.value > best.value ? level : best), asks[0])
+          : null;
+
       const buyPressure =
         base.bidDominance >= 62 ? 'Bid sangat dominan' : base.bidDominance >= 55 ? 'Bid condong' : 'Bid tipis';
 
@@ -276,10 +291,14 @@ export default function HomePage() {
         buyPressure,
         activityLabel,
         momentumLabel,
+        bidWallPrice: bidWallLevel?.price ?? coin.last,
+        bidWallValue: bidWallLevel?.value ?? 0,
+        askWallPrice: askWallLevel?.price ?? coin.last,
+        askWallValue: askWallLevel?.value ?? 0,
         reason: `${buyPressure} (${base.bidDominance.toFixed(0)}%) • ${activityLabel} • ${momentumLabel}`,
       };
     },
-    [buildDepthSignal]
+    [buildDepthSignal, parseDepthLevels]
   );
 
   const buildWarningGuidance = useCallback(
@@ -977,7 +996,7 @@ export default function HomePage() {
   }, [coins]);
 
   const renderPumpMathCard = useCallback(
-    (item: (typeof pumpMathList)[number], includeOrderbook: boolean) => {
+    (item: (typeof pumpMathList)[number]) => {
       const edgePct = item.upsidePct - item.downsidePct;
       const tpTargets = computeTpTargets(item.coin);
       const buyLine =
@@ -1005,13 +1024,6 @@ export default function HomePage() {
       const supportLine = `Pendukung: ${item.structureNote}; ${item.btcDrag}; Upside ${item.upsidePct.toFixed(
         1
       )}% vs buffer ${item.downsidePct.toFixed(1)}%.`;
-
-      const orderbook = includeOrderbook ? pumpOrderbookMap[item.coin.pair] : undefined;
-      const orderbookFallback = pumpOrderbookLoading
-        ? 'Memuat orderbook...'
-        : pumpOrderbookError
-          ? pumpOrderbookError
-          : 'Orderbook belum tersedia.';
 
       return (
         <div key={item.coin.pair} className={`pump-math-card bias-${item.bias}`}>
@@ -1099,37 +1111,6 @@ export default function HomePage() {
               </div>
             </div>
 
-            {includeOrderbook && (
-              <div className="pump-orderbook">
-                <div className="pump-orderbook-title">Order buy/sell & aktivitas market</div>
-                {orderbook ? (
-                  <>
-                    <div className="pump-orderbook-main">
-                      <div className="orderbook-metric">
-                        <div className="orderbook-label">Dominasi bid</div>
-                        <div className="orderbook-value">{orderbook.bidDominance.toFixed(0)}%</div>
-                        <div className="orderbook-sub">{orderbook.buyPressure}</div>
-                      </div>
-                      <div className="orderbook-metric">
-                        <div className="orderbook-label">Bid wall</div>
-                        <div className="orderbook-value">{formatRupiah(orderbook.wallValue)}</div>
-                        <div className="orderbook-sub">
-                          di {formatPrice(orderbook.wallPrice)} {orderbook.wallNear ? '(dekat harga)' : ''}
-                        </div>
-                      </div>
-                      <div className="orderbook-metric">
-                        <div className="orderbook-label">Aktivitas market</div>
-                        <div className="orderbook-value">{orderbook.activityLabel}</div>
-                        <div className="orderbook-sub">{orderbook.momentumLabel}</div>
-                      </div>
-                    </div>
-                    <div className="orderbook-reason">{orderbook.reason}</div>
-                  </>
-                ) : (
-                  <div className="orderbook-empty">{orderbookFallback}</div>
-                )}
-              </div>
-            )}
           </div>
         </div>
       );
@@ -1137,11 +1118,7 @@ export default function HomePage() {
     [
       computeTpTargets,
       formatPrice,
-      formatRupiah,
       formatter,
-      pumpOrderbookError,
-      pumpOrderbookLoading,
-      pumpOrderbookMap,
     ]
   );
 
@@ -1899,7 +1876,7 @@ export default function HomePage() {
               <div className="empty-state small">Menunggu sinyal mau pump untuk dihitung.</div>
             ) : (
               <div className="pump-math-grid">
-                {pumpMathList.slice(0, 4).map((item) => renderPumpMathCard(item, false))}
+                {pumpMathList.slice(0, 4).map((item) => renderPumpMathCard(item))}
               </div>
             )}
           </section>
@@ -1909,7 +1886,7 @@ export default function HomePage() {
               <div>
                 <h3>Lab Hitung Mau Pump + Orderbook</h3>
                 <p className="muted">
-                  Versi Lab Hitung Mau Pump yang ditambah analisis order buy/sell dan aktivitas market dari depth API.
+                  Analisis orderbook di bawah Lab Hitung Mau Pump: titik bid/sell terbesar, dominasi beli, dan aktivitas market.
                 </p>
               </div>
               <span className="badge badge-strong">Orderbook live</span>
@@ -1917,9 +1894,69 @@ export default function HomePage() {
 
             {pumpMathList.length === 0 ? (
               <div className="empty-state small">Menunggu sinyal mau pump untuk dianalisis.</div>
+            ) : pumpOrderbookLoading ? (
+              <div className="empty-state small">Memuat data orderbook untuk kandidat pump...</div>
+            ) : pumpOrderbookError ? (
+              <div className="empty-state small">{pumpOrderbookError}</div>
             ) : (
-              <div className="pump-math-grid">
-                {pumpMathList.slice(0, 4).map((item) => renderPumpMathCard(item, true))}
+              <div className="orderbook-analysis-list">
+                {pumpOrderbookTargets.map((coin, idx) => {
+                  const orderbook = pumpOrderbookMap[coin.pair];
+                  if (!orderbook) {
+                    return (
+                      <div key={coin.pair} className="orderbook-analysis-item">
+                        <div className="orderbook-analysis-head">
+                          <span className="orderbook-analysis-rank">#{idx + 1}</span>
+                          <span className="orderbook-analysis-pair">{coin.pair.toUpperCase()}</span>
+                          <span className="orderbook-analysis-price">{formatPrice(coin.last)}</span>
+                        </div>
+                        <div className="orderbook-analysis-note">Orderbook belum tersedia untuk koin ini.</div>
+                      </div>
+                    );
+                  }
+
+                  const flowLabel =
+                    orderbook.bidDominance >= 60
+                      ? 'Beli lebih berat'
+                      : orderbook.bidDominance <= 45
+                        ? 'Sell lebih berat'
+                        : 'Seimbang';
+
+                  return (
+                    <div key={coin.pair} className="orderbook-analysis-item">
+                      <div className="orderbook-analysis-head">
+                        <span className="orderbook-analysis-rank">#{idx + 1}</span>
+                        <span className="orderbook-analysis-pair">{coin.pair.toUpperCase()}</span>
+                        <span className="orderbook-analysis-price">{formatPrice(coin.last)}</span>
+                      </div>
+                      <div className="orderbook-analysis-grid">
+                        <div className="orderbook-analysis-block">
+                          <div className="orderbook-analysis-label">Dominasi order</div>
+                          <div className="orderbook-analysis-value">{orderbook.bidDominance.toFixed(0)}% bid</div>
+                          <div className="orderbook-analysis-sub">{flowLabel}</div>
+                        </div>
+                        <div className="orderbook-analysis-block">
+                          <div className="orderbook-analysis-label">Bid besar</div>
+                          <div className="orderbook-analysis-value">{formatRupiah(orderbook.bidWallValue)}</div>
+                          <div className="orderbook-analysis-sub">
+                            di {formatPrice(orderbook.bidWallPrice)} {orderbook.wallNear ? '(dekat harga)' : ''}
+                          </div>
+                        </div>
+                        <div className="orderbook-analysis-block">
+                          <div className="orderbook-analysis-label">Sell besar</div>
+                          <div className="orderbook-analysis-value">{formatRupiah(orderbook.askWallValue)}</div>
+                          <div className="orderbook-analysis-sub">di {formatPrice(orderbook.askWallPrice)}</div>
+                        </div>
+                        <div className="orderbook-analysis-block">
+                          <div className="orderbook-analysis-label">Aktivitas market</div>
+                          <div className="orderbook-analysis-value">{orderbook.activityLabel}</div>
+                          <div className="orderbook-analysis-sub">{orderbook.momentumLabel}</div>
+                        </div>
+                      </div>
+                      <div className="orderbook-analysis-note">{orderbook.reason}</div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </section>
