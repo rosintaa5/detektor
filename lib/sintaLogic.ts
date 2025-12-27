@@ -186,7 +186,6 @@ function getSignal(args: {
     volIdr >= STRONG_VOL_IDR &&
     goodRr &&
     tpOk &&
-    pricePhase !== 'sudah_telanjur_naik' &&
     nearLow &&
     moveHealthy
   ) {
@@ -197,7 +196,6 @@ function getSignal(args: {
     volIdr >= STRONG_VOL_IDR * 0.7 &&
     okRr &&
     tpOk &&
-    pricePhase !== 'sudah_telanjur_naik' &&
     notTooHigh
   ) {
     return 'buy';
