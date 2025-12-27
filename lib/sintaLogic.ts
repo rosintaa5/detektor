@@ -42,7 +42,13 @@ interface SwingLevels {
   rr: number;
 }
 
-function computeSwingLevels(last: number, high: number, low: number): SwingLevels | null {
+function computeSwingLevels(
+  last: number,
+  high: number,
+  low: number,
+  posInRange: number,
+  moveFromLowPct: number
+): SwingLevels | null {
   if (!isFinite(last) || last <= 0 || !isFinite(high) || !isFinite(low) || high <= 0 || low <= 0) {
     return null;
   }
@@ -51,8 +57,11 @@ function computeSwingLevels(last: number, high: number, low: number): SwingLevel
   if (!isFinite(baseRange) || baseRange <= 0) return null;
 
   // Entry utamakan harga dasar (dekat low) agar tidak telanjur mengejar harga.
-  const baseEntry = low + baseRange * 0.22;
-  let entry = Math.min(last, baseEntry);
+  const pullbackFactor =
+    moveFromLowPct >= 18 ? 0.12 : moveFromLowPct >= 10 ? 0.18 : 0.26;
+  const baseEntry = low + baseRange * pullbackFactor;
+  const shouldStayNear = posInRange <= 0.35;
+  let entry = shouldStayNear ? last : Math.min(last, baseEntry);
   if (entry < low * 1.01) entry = low * 1.01;
   if (entry <= 0) entry = last * 0.99;
 
@@ -65,9 +74,9 @@ function computeSwingLevels(last: number, high: number, low: number): SwingLevel
     return null;
   }
 
-  // TP diarahkan ke area tengah-atas range, atau minimal RR 2.2x.
-  const tpFromRange = entry + baseRange * 0.55;
-  const tpFromRisk = entry + riskAmt * 2.2;
+  // TP diarahkan ke area tengah-atas range, atau minimal RR 2.4x.
+  const tpFromRange = entry + baseRange * 0.6;
+  const tpFromRisk = entry + riskAmt * 2.4;
   let tp = Math.max(tpFromRange, tpFromRisk);
 
   if (!isFinite(tp) || tp <= entry) {
@@ -303,7 +312,7 @@ export function buildCoinSignals(rawTickers: RawTicker[]): CoinSignal[] {
     const moveFromLowPct = low > 0 ? ((last - low) / low) * 100 : 0;
     const moveFromHighPct = high > 0 ? ((high - last) / high) * 100 : 0;
 
-    const swing = computeSwingLevels(last, high, low);
+    const swing = computeSwingLevels(last, high, low, posInRange, moveFromLowPct);
     if (!swing) continue;
 
     const pricePhase = getPricePhase(last, high, low);
