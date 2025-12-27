@@ -617,7 +617,7 @@ export default function HomePage() {
   useEffect(() => {
     if (!isAuthorized) return undefined;
 
-    const interval = setInterval(() => setNowTs(Date.now()), 5_000);
+    const interval = setInterval(() => setNowTs(Date.now()), 60_000);
     return () => clearInterval(interval);
   }, [isAuthorized]);
 
