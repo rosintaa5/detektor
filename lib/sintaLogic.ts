@@ -48,34 +48,42 @@ function computeSwingLevels(last: number, high: number, low: number): SwingLevel
   const baseRange = high > low ? high - low : last * 0.03;
   const posInRange = high > low ? (last - low) / baseRange : 0.5;
   const moveFromLowPct = low > 0 ? ((last - low) / low) * 100 : 0;
-  const isOverextended = posInRange >= 0.78 || moveFromLowPct >= 25;
+  const isOverextended = posInRange >= 0.72 || moveFromLowPct >= 22;
+  const isDeepDip = posInRange <= 0.25 || moveFromLowPct <= 6;
   let atrApprox = baseRange / 1.8;
   if (!isFinite(atrApprox) || atrApprox <= 0) {
     atrApprox = last * 0.03;
   }
 
   const dipAmount = Math.min(last * 0.005, atrApprox * 0.3); // koreksi kecil
-  const baseFloor = low > 0 ? low * 1.02 : low + baseRange * 0.1;
-  const baseEntry = low + baseRange * 0.2;
+  const baseFloor = low > 0 ? low * 1.015 : low + baseRange * 0.08;
+  const baseEntry = low + baseRange * 0.18;
+  const baseCeil = low + baseRange * 0.35;
   let entry = isOverextended
-    ? Math.min(last * 0.98, Math.max(baseEntry, baseFloor))
+    ? Math.min(last * 0.985, Math.max(baseEntry, baseFloor))
     : last - dipAmount;
+  if (isDeepDip) {
+    entry = Math.min(last * 0.99, Math.max(baseFloor, baseEntry * 0.9));
+  }
+  entry = Math.min(entry, baseCeil);
+  entry = Math.min(entry, last * 0.995);
   if (entry <= 0) entry = last * 0.99;
 
-  let riskAmt = Math.max(entry * 0.03, atrApprox * 1.2); // minimal 3% atau 1.2x ATR approx
+  const rangeRisk = Math.max(baseRange * 0.35, atrApprox * 1.1);
+  let riskAmt = Math.max(entry * 0.035, rangeRisk); // minimal 3.5% atau rangeRisk
   let sl = entry - riskAmt;
   if (sl <= 0) {
     sl = entry * 0.95;
     riskAmt = entry - sl;
   }
 
-  let rewardAmt = Math.max(entry * 0.12, atrApprox * 3); // minimal 12% atau 3x ATR approx
+  let rewardAmt = Math.max(entry * 0.11, Math.max(baseRange * 0.75, atrApprox * 2.6));
   let tp = entry + rewardAmt;
 
   const riskPct = ((entry - sl) / entry) * 100;
   let rewardPct = ((tp - entry) / entry) * 100;
 
-  const maxRiskPct = 8;
+  const maxRiskPct = 7.5;
   if (riskPct > maxRiskPct) {
     const maxRiskAmt = (maxRiskPct / 100) * entry;
     sl = entry - maxRiskAmt;
@@ -88,8 +96,8 @@ function computeSwingLevels(last: number, high: number, low: number): SwingLevel
     return null;
   }
 
-  if (rewardAmt < finalRisk * 2) {
-    rewardAmt = finalRisk * 2;
+  if (rewardAmt < finalRisk * 2.2) {
+    rewardAmt = finalRisk * 2.2;
     tp = entry + rewardAmt;
   }
 
@@ -160,14 +168,16 @@ function getPumpStatus(
   const range = high - low;
   const posInRange = (last - low) / range;
   const moveFromLowPct = ((last - low) / low) * 100;
+  const moveFromHighPct = ((high - last) / high) * 100;
 
   if (
-    posInRange >= 0.4 &&
-    posInRange <= 0.72 &&
-    moveFromLowPct >= 6 &&
-    moveFromLowPct <= 26 &&
+    posInRange >= 0.28 &&
+    posInRange <= 0.68 &&
+    moveFromLowPct >= 4 &&
+    moveFromLowPct <= 18 &&
+    moveFromHighPct >= 6 &&
     volIdr >= 150_000_000 &&
-    range / last >= 0.05
+    range / last >= 0.045
   ) {
     return 'mau_pump';
   }
