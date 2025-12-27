@@ -153,12 +153,16 @@ function getPumpStatus(
   const range = high - low;
   const posInRange = (last - low) / range;
   const moveFromLowPct = ((last - low) / low) * 100;
+  const rangePct = range / last;
 
   if (
-    posInRange >= 0.7 &&
-    moveFromLowPct >= 12 &&
-    volIdr >= 150_000_000 &&
-    range / last >= 0.05
+    posInRange >= 0.35 &&
+    posInRange <= 0.7 &&
+    moveFromLowPct >= 4 &&
+    moveFromLowPct <= 18 &&
+    volIdr >= 80_000_000 &&
+    rangePct >= 0.03 &&
+    rangePct <= 0.15
   ) {
     return 'mau_pump';
   }
@@ -213,6 +217,7 @@ function getSignal(args: {
 
   if (
     volIdr >= WATCH_MIN_VOL_IDR &&
+    pricePhase !== 'sudah_telanjur_naik' &&
     (pricePhase === 'baru_mau_naik' || pumpStatus === 'mau_pump') &&
     tpFromEntryPct >= 5 &&
     rr >= 1.3
