@@ -155,8 +155,10 @@ function getPumpStatus(
   const moveFromLowPct = ((last - low) / low) * 100;
 
   if (
-    posInRange >= 0.7 &&
-    moveFromLowPct >= 12 &&
+    posInRange >= 0.35 &&
+    posInRange <= 0.7 &&
+    moveFromLowPct >= 4 &&
+    moveFromLowPct <= 18 &&
     volIdr >= 150_000_000 &&
     range / last >= 0.05
   ) {

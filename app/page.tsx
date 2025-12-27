@@ -10,6 +10,40 @@ interface ApiResponse {
   coins: CoinSignal[];
 }
 
+interface DepthLevel {
+  price: number;
+  volume: number;
+  value: number;
+}
+
+interface DepthResponse {
+  buy: Array<[string | number, string | number]>;
+  sell: Array<[string | number, string | number]>;
+}
+
+interface DepthSignal {
+  pair: string;
+  last: number;
+  score: number;
+  rangePct: number;
+  posInRange: number;
+  bidDominance: number;
+  wallValue: number;
+  wallPrice: number;
+  wallNear: boolean;
+  reason: string;
+}
+
+interface PumpOrderbookInsight extends DepthSignal {
+  buyPressure: string;
+  activityLabel: string;
+  momentumLabel: string;
+  bidWallPrice: number;
+  bidWallValue: number;
+  askWallPrice: number;
+  askWallValue: number;
+}
+
 type PredictionDirection = 'bullish' | 'bearish' | 'netral';
 
 const PIN_STORAGE_KEY = 'sinta-pin-authorized';
@@ -83,6 +117,14 @@ export default function HomePage() {
   );
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
+  const [scalpPage, setScalpPage] = useState(1);
+  const [depthSignals, setDepthSignals] = useState<DepthSignal[]>([]);
+  const [depthWatchSignals, setDepthWatchSignals] = useState<DepthSignal[]>([]);
+  const [depthLoading, setDepthLoading] = useState(false);
+  const [depthError, setDepthError] = useState<string | null>(null);
+  const [pumpOrderbookMap, setPumpOrderbookMap] = useState<Record<string, PumpOrderbookInsight>>({});
+  const [pumpOrderbookLoading, setPumpOrderbookLoading] = useState(false);
+  const [pumpOrderbookError, setPumpOrderbookError] = useState<string | null>(null);
   const lastWarningStateRef = useRef<Map<string, string>>(new Map());
   const trackedPairsRef = useRef<Map<string, number>>(new Map());
 
@@ -148,6 +190,115 @@ export default function HomePage() {
       return `${days}h lalu`;
     },
     [nowTs]
+  );
+
+  const parseDepthLevels = useCallback((raw: DepthResponse['buy']) => {
+    return (raw ?? [])
+      .map(([price, volume]) => {
+        const priceNum = Number(price);
+        const volumeNum = Number(volume);
+        const value = priceNum * volumeNum;
+        if (!Number.isFinite(priceNum) || !Number.isFinite(volumeNum)) return null;
+        return { price: priceNum, volume: volumeNum, value };
+      })
+      .filter((item): item is DepthLevel => Boolean(item));
+  }, []);
+
+  const buildDepthSignal = useCallback(
+    (coin: CoinSignal, depth: DepthResponse): DepthSignal | null => {
+      const bids = parseDepthLevels(depth.buy).slice(0, 12);
+      const asks = parseDepthLevels(depth.sell).slice(0, 12);
+
+      if (bids.length === 0 || asks.length === 0) return null;
+
+      const bidValue = bids.reduce((sum, level) => sum + level.value, 0);
+      const askValue = asks.reduce((sum, level) => sum + level.value, 0);
+      const totalValue = bidValue + askValue;
+      const bidDominance = totalValue > 0 ? (bidValue / totalValue) * 100 : 50;
+
+      const wallLevel = bids.reduce((best, level) => (level.value > best.value ? level : best), bids[0]);
+      const avgBid = bidValue / bids.length;
+      const wallStrength = avgBid > 0 ? wallLevel.value / avgBid : 1;
+      const wallNear = Math.abs(wallLevel.price - coin.last) / coin.last <= 0.015;
+
+      const rangePct = coin.low > 0 ? ((coin.high - coin.low) / coin.low) * 100 : 0;
+      const posInRange = coin.range > 0 ? coin.posInRange : 0;
+
+      const tightScore = Math.max(0, 12 - rangePct) * 1.4;
+      const dominanceScore = Math.max(0, bidDominance - 50) * 0.9;
+      const wallScore = Math.min(12, wallStrength * 4);
+      const centerScore = posInRange >= 0.42 && posInRange <= 0.6 ? 6 : 0;
+      const proximityScore = wallNear ? 6 : 0;
+      const score = Math.min(99, Math.round(40 + tightScore + dominanceScore + wallScore + centerScore + proximityScore));
+
+      const oscillationLabel =
+        rangePct <= 6 ? 'Bolak balik ketat' : rangePct <= 10 ? 'Bolak balik sedang' : 'Range melebar';
+      const wallLabel = wallNear ? 'wall dekat harga' : 'wall bawah harga';
+
+      return {
+        pair: coin.pair,
+        last: coin.last,
+        score,
+        rangePct,
+        posInRange,
+        bidDominance,
+        wallValue: wallLevel.value,
+        wallPrice: wallLevel.price,
+        wallNear,
+        reason: `Bid ${bidDominance.toFixed(0)}% • ${oscillationLabel} • ${wallLabel}`,
+      };
+    },
+    [parseDepthLevels]
+  );
+
+  const buildPumpOrderbookInsight = useCallback(
+    (coin: CoinSignal, depth: DepthResponse): PumpOrderbookInsight | null => {
+      const base = buildDepthSignal(coin, depth);
+      if (!base) return null;
+
+      const bids = parseDepthLevels(depth.buy).slice(0, 20);
+      const asks = parseDepthLevels(depth.sell).slice(0, 20);
+      const bidWallLevel =
+        bids.length > 0
+          ? bids.reduce((best, level) => (level.value > best.value ? level : best), bids[0])
+          : null;
+      const askWallLevel =
+        asks.length > 0
+          ? asks.reduce((best, level) => (level.value > best.value ? level : best), asks[0])
+          : null;
+
+      const buyPressure =
+        base.bidDominance >= 62 ? 'Bid sangat dominan' : base.bidDominance >= 55 ? 'Bid condong' : 'Bid tipis';
+
+      const activityLabel =
+        coin.volIdr >= 5_000_000_000
+          ? 'Aktivitas ramai'
+          : coin.volIdr >= 1_000_000_000
+            ? 'Aktivitas aktif'
+            : coin.volIdr >= 300_000_000
+              ? 'Aktivitas sedang'
+              : 'Aktivitas sepi';
+
+      const momentumLabel =
+        coin.moveFromLowPct >= 18
+          ? 'Momentum kencang'
+          : coin.moveFromLowPct >= 8
+            ? 'Momentum naik'
+            : 'Momentum awal';
+
+      return {
+        ...base,
+        buyPressure,
+        activityLabel,
+        momentumLabel,
+        bidWallPrice: bidWallLevel?.price ?? coin.last,
+        bidWallValue: bidWallLevel?.value ?? 0,
+        askWallPrice: askWallLevel?.price ?? coin.last,
+        askWallValue: askWallLevel?.value ?? 0,
+        reason: `${buyPressure} (${base.bidDominance.toFixed(0)}%) • ${activityLabel} • ${momentumLabel}`,
+      };
+    },
+    [buildDepthSignal, parseDepthLevels]
   );
 
   const buildWarningGuidance = useCallback(
@@ -439,11 +590,11 @@ export default function HomePage() {
     const interval = setInterval(() => {
       fetchData();
       setNowTs(Date.now());
-    }, 15_000);
+    }, 10 * 60 * 1000);
 
     const newsInterval = setInterval(() => {
       fetchNews();
-    }, 5 * 60 * 1000);
+    }, 10 * 60 * 1000);
 
     return () => {
       clearInterval(interval);
@@ -542,7 +693,9 @@ export default function HomePage() {
     return candidates;
   }, [coins, normalizeAssetFromPair, predictionMap]);
 
-  const pumpList = coins.filter((c) => c.pumpStatus === 'mau_pump');
+  const pumpList = coins.filter(
+    (c) => c.pumpStatus === 'mau_pump' && c.pricePhase !== 'sudah_telanjur_naik'
+  );
 
   const btcContext = useMemo(() => {
     const btcIdr =
@@ -593,11 +746,12 @@ export default function HomePage() {
         const entryGapPct = Number.isFinite(coin.last) && coin.last > 0 ? ((coin.entry - coin.last) / coin.last) * 100 : 0;
         const heatPct = Math.max(0, Math.min(100, coin.posInRange * 100));
         const momentumPct = Math.max(0, coin.moveFromLowPct);
+        const isLate = coin.pricePhase === 'sudah_telanjur_naik' || entryGapPct < -4;
         const volumeScore = Math.max(18, Math.min(40, Math.log10(Math.max(coin.volIdr, 1)) * 12 - 36));
         const rrScore = Math.min(28, Math.max(0, rrLive * 9));
         const setupScore = Math.min(18, Math.max(0, 18 - Math.abs(heatPct - 58) * 0.25));
         const momentumScore = Math.min(24, Math.max(0, momentumPct * 0.7));
-        const score = Math.round(volumeScore + rrScore + setupScore + momentumScore);
+        const score = Math.round(volumeScore + rrScore + setupScore + momentumScore - (isLate ? 18 : 0));
 
         const coilPct = Math.max(0, Math.min(25, ((coin.high - coin.low) / Math.max(coin.low, 1)) * 100));
         const sidewayLabel = coilPct <= 6 ? 'Sideway ketat' : coilPct <= 12 ? 'Sideway lebar' : 'Range lebar';
@@ -635,12 +789,11 @@ export default function HomePage() {
               ? 'Buffer pas-pasan'
               : 'Buffer tipis, rawan longsor';
 
-        const entryNote =
-          entryGapPct < -3
-            ? 'Harga lari jauh di atas entry, tunggu retrace'
-            : entryGapPct < 1
-              ? 'Sudah di dekat/paska entry'
-              : 'Masih diskon vs entry, boleh cicil';
+        const entryNote = isLate
+          ? `Telanjur naik, entry tunggu turun dekat ${formatPrice(coin.entry)}`
+          : entryGapPct < 1
+            ? 'Sudah di dekat/paska entry'
+            : 'Masih diskon vs entry, boleh cicil';
 
         let bias: 'bull' | 'neutral' | 'risk' = 'bull';
         if (rrLive < 1.4 || upsidePct < 6) {
@@ -649,14 +802,15 @@ export default function HomePage() {
           bias = 'neutral';
         }
 
-        const actionLine =
-          bias === 'bull'
+        const actionLine = isLate
+          ? `Sudah telanjur naik. Entry aman saat harga turun mendekati ${formatPrice(coin.entry)} sebelum lanjut.`
+          : bias === 'bull'
             ? `Peluang ${upsidePct.toFixed(1)}% ke TP dengan RR live ${rrLive.toFixed(2)}; entry ${
                 entryGapPct > 1 ? 'masih diskon' : 'sudah jalan'
               } ${entryGapPct.toFixed(1)}%.`
             : bias === 'neutral'
-            ? `Setup cukup, tapi butuh konfirmasi volume tambahan. Upside ${upsidePct.toFixed(1)}%, RR ${rrLive.toFixed(2)}.`
-            : `Risiko > reward (${rrLive.toFixed(2)}). Lebih aman tunggu re-entry dekat ${formatPrice(coin.entry)}.`;
+              ? `Setup cukup, tapi butuh konfirmasi volume tambahan. Upside ${upsidePct.toFixed(1)}%, RR ${rrLive.toFixed(2)}.`
+              : `Risiko > reward (${rrLive.toFixed(2)}). Lebih aman tunggu re-entry dekat ${formatPrice(coin.entry)}.`;
 
         const convictionLabel =
           score >= 90 ? 'A' : score >= 75 ? 'B+' : score >= 65 ? 'B' : score >= 55 ? 'C+' : 'C';
@@ -691,10 +845,346 @@ export default function HomePage() {
           btcDrag,
           historyNote,
           confidencePct,
+          isLate,
         };
       })
+      .filter((item) => !item.isLate)
       .sort((a, b) => b.score - a.score);
   }, [btcContext.bias, formatPrice, pumpList]);
+
+  const pumpOrderbookTargets = useMemo(
+    () => pumpMathList.slice(0, 4).map((item) => item.coin),
+    [pumpMathList]
+  );
+
+  const scalpQuickList = useMemo(() => {
+    const candidates = pumpMathList
+      .filter((item) => {
+        const edge = item.upsidePct - item.downsidePct;
+        return (
+          item.coin.last < 100 &&
+          item.confidencePct >= 78 &&
+          item.upsidePct >= 8 &&
+          edge >= 4 &&
+          item.rrLive >= 1.6
+        );
+      })
+      .map((item) => {
+        const tpTargets = computeTpTargets(item.coin);
+        const tp1 = tpTargets[0];
+        const tp2 = tpTargets[1];
+        const edgePct = item.upsidePct - item.downsidePct;
+        const tpChance = Math.min(99, Math.max(60, Math.round(item.confidencePct * 0.6 + edgePct * 2 + item.rrLive * 6)));
+        const priorityScore = Math.round(tpChance * 0.55 + item.confidencePct * 0.3 + edgePct * 1.8 + item.rrLive * 7);
+
+        const entryNote =
+          item.entryGapPct < -3
+            ? 'Sudah lari, tunggu retrace tipis'
+            : item.entryGapPct <= 1
+              ? 'Gap sempit, boleh bid tipis'
+              : 'Masih diskon vs entry, curi start dengan lot terbatas';
+
+        const reasonShort = `${item.structureNote} • Edge ${edgePct.toFixed(1)}% • ${entryNote}`;
+
+        return {
+          pair: item.coin.pair,
+          price: item.coin.last,
+          confidence: item.confidencePct,
+          tpChance,
+          rrLive: item.rrLive,
+          upsidePct: item.upsidePct,
+          edgePct,
+          priorityScore,
+          liquidity: item.liquidityLabel,
+          entryGapPct: item.entryGapPct,
+          entryNote,
+          reasonShort,
+          tp1,
+          tp2,
+          action: item.actionLine,
+          supports: [item.structureNote, item.btcDrag, `Edge live ${edgePct.toFixed(1)}%`],
+        };
+      });
+
+    return candidates
+      .sort((a, b) =>
+        b.priorityScore - a.priorityScore || b.confidence - a.confidence || b.tpChance - a.tpChance || b.edgePct - a.edgePct
+      );
+  }, [computeTpTargets, pumpMathList]);
+
+  const scalpPageSize = 8;
+  const totalScalpPages = Math.max(1, Math.ceil(scalpQuickList.length / scalpPageSize));
+
+  useEffect(() => {
+    setScalpPage((prev) => Math.min(Math.max(1, prev), totalScalpPages));
+  }, [totalScalpPages]);
+
+  const displayedScalp = useMemo(
+    () => scalpQuickList.slice((scalpPage - 1) * scalpPageSize, scalpPage * scalpPageSize),
+    [scalpPage, scalpPageSize, scalpQuickList]
+  );
+
+  useEffect(() => {
+    if (!isAuthorized) return undefined;
+    if (pumpOrderbookTargets.length === 0) {
+      setPumpOrderbookMap({});
+      setPumpOrderbookError(null);
+      return undefined;
+    }
+
+    let isActive = true;
+    const controller = new AbortController();
+
+    const run = async () => {
+      try {
+        setPumpOrderbookLoading(true);
+        setPumpOrderbookError(null);
+        const results = await Promise.allSettled(
+          pumpOrderbookTargets.map(async (coin) => {
+            const res = await fetch(`/api/depth/${coin.pair}`, {
+              signal: controller.signal,
+            });
+            if (!res.ok) {
+              throw new Error(`Depth ${coin.pair} ${res.status}`);
+            }
+            const data = (await res.json()) as DepthResponse;
+            return buildPumpOrderbookInsight(coin, data);
+          })
+        );
+
+        if (!isActive) return;
+
+        const nextMap: Record<string, PumpOrderbookInsight> = {};
+        results.forEach((result) => {
+          if (result.status === 'fulfilled' && result.value) {
+            nextMap[result.value.pair] = result.value;
+          }
+        });
+        setPumpOrderbookMap(nextMap);
+      } catch (err) {
+        if (!isActive) return;
+        if ((err as Error).name === 'AbortError') return;
+        console.error(err);
+        setPumpOrderbookError('Orderbook pump gagal dimuat.');
+        setPumpOrderbookMap({});
+      } finally {
+        if (isActive) setPumpOrderbookLoading(false);
+      }
+    };
+
+    run();
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, [buildPumpOrderbookInsight, isAuthorized, pumpOrderbookTargets]);
+
+  const depthCandidates = useMemo(() => {
+    return coins
+      .map((coin) => {
+        const rangePct = coin.low > 0 ? ((coin.high - coin.low) / coin.low) * 100 : 0;
+        return { coin, rangePct };
+      })
+      .filter(({ coin, rangePct }) => {
+        const inRange = coin.posInRange >= 0.35 && coin.posInRange <= 0.65;
+        return (
+          coin.volIdr >= 80_000_000 &&
+          rangePct > 0 &&
+          rangePct <= 12 &&
+          inRange &&
+          coin.last > 0
+        );
+      })
+      .sort((a, b) => b.coin.volIdr - a.coin.volIdr || a.rangePct - b.rangePct)
+      .slice(0, 12)
+      .map(({ coin }) => coin);
+  }, [coins]);
+
+  const renderPumpMathCard = useCallback(
+    (item: (typeof pumpMathList)[number]) => {
+      const edgePct = item.upsidePct - item.downsidePct;
+      const tpTargets = computeTpTargets(item.coin);
+      const buyLine =
+        item.rrLive >= 2
+          ? `Layak dibeli: upside ${item.upsidePct.toFixed(1)}% & RR ${item.rrLive.toFixed(2)}x (RR sehat).`
+          : `Masih layak: upside ${item.upsidePct.toFixed(1)}% & RR ${item.rrLive.toFixed(2)}x (cukup).`;
+
+      const timingLine = item.isLate
+        ? `Tahan entry dulu: tunggu harga turun ke sekitar ${formatPrice(item.coin.entry)}.`
+        : item.entryGapPct <= 1
+          ? 'Beli dulu kecil: harga dekat entry, momentum jalan.'
+          : 'Boleh curi start: harga masih di bawah entry/diskon.';
+
+      const paceLine =
+        item.heatPct >= 80
+          ? 'Cicil kecil: heat tinggi, hindari FOMO.'
+          : item.liquidityLabel === 'Likuid tipis'
+            ? 'Cicil: likuiditas tipis, jangan all-in.'
+            : 'Bisa cicil bertahap: likuiditas cukup dan heat aman.';
+
+      const cautionLine = `Hati-hati: ${item.riskNote.toLowerCase()}.`;
+      const tpChance = Math.min(99, Math.max(35, item.confidencePct));
+      const tpLine = `Prediksi tembus TP: ${tpChance}% (gabungan score & bias BTC).`;
+      const supportLine = `Pendukung: ${item.structureNote}; ${item.btcDrag}; Upside ${item.upsidePct.toFixed(
+        1
+      )}% vs buffer ${item.downsidePct.toFixed(1)}%.`;
+
+      return (
+        <div key={item.coin.pair} className={`pump-math-card bias-${item.bias}`}>
+          <div className="pump-math-body">
+            <div className="pump-math-head">
+              <div className="pump-math-title">
+                <div className="pump-math-pair">
+                  {item.coin.pair.toUpperCase()}{' '}
+                  <span className="pump-math-price">({formatPrice(item.coin.last)})</span>
+                </div>
+                <div className="pump-math-sub">
+                  Likuiditas {item.liquidityLabel} • Volume {formatter.format(item.coin.volIdr)} IDR
+                </div>
+              </div>
+              <div className="confidence-box">
+                <div className="confidence-value">{item.confidencePct}%</div>
+                <div className="confidence-label">Yakin pump</div>
+                <span className="confidence-grade">{item.convictionLabel}</span>
+              </div>
+            </div>
+
+            <div className="pump-math-quick">
+              <div className="quick-item">
+                <div className="quick-label">Upside → TP</div>
+                <div className="quick-value">{item.upsidePct.toFixed(1)}%</div>
+                <div className="quick-sub">RR live {item.rrLive.toFixed(2)}x</div>
+              </div>
+              <div className="quick-item">
+                <div className="quick-label">Momentum 24j</div>
+                <div className="quick-value">{item.momentumPct.toFixed(1)}%</div>
+                <div className="quick-sub">Heat range {item.heatPct.toFixed(1)}%</div>
+              </div>
+              <div className="quick-item">
+                <div className="quick-label">Buffer SL</div>
+                <div className="quick-value">{item.downsidePct.toFixed(1)}%</div>
+                <div className="quick-sub">{item.riskNote}</div>
+              </div>
+              <div className="quick-item">
+                <div className="quick-label">Edge live</div>
+                <div className="quick-value">{edgePct.toFixed(1)}%</div>
+                <div className="quick-sub">Upside - downside</div>
+              </div>
+            </div>
+
+            <div className="pump-math-forecast">
+              <div className="forecast-title">Perkiraan tembus TP</div>
+              <div className="forecast-value">{tpChance}%</div>
+              <div className="forecast-sub">{tpLine}</div>
+              <ul className="forecast-tp-list">
+                {tpTargets.map((tp, idx) => (
+                  <li key={`${item.coin.pair}-tp-${idx}`}>
+                    TP {idx + 1}: {formatPrice(tp.price)} ({tp.pct.toFixed(1)}%)
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="pump-math-support">
+              <div className="support-title">Pendukung kuat</div>
+              <div className="support-chips">
+                {[
+                  item.structureNote,
+                  item.btcDrag,
+                  `Upside ${item.upsidePct.toFixed(1)}% vs buffer ${item.downsidePct.toFixed(1)}%`,
+                ].map((note, idx) => (
+                  <span key={`${item.coin.pair}-support-${idx}`} className="support-chip">
+                    {note}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="pump-math-action">
+              {item.actionLine}
+              <div className="pump-math-hint">
+                Entry gap {item.entryGapPct.toFixed(1)}% • {item.historyNote}
+              </div>
+              <div className="pump-math-verdict">
+                <div className="verdict-line">{tpLine}</div>
+                <div className="verdict-line">{supportLine}</div>
+                <div className="verdict-line">{buyLine}</div>
+                <div className="verdict-line">{timingLine}</div>
+                <div className="verdict-line">{paceLine}</div>
+                <div className="verdict-line verdict-caution">{cautionLine}</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      );
+    },
+    [
+      computeTpTargets,
+      formatPrice,
+      formatter,
+    ]
+  );
+
+  useEffect(() => {
+    if (!isAuthorized) return undefined;
+    if (depthCandidates.length === 0) {
+      setDepthSignals([]);
+      setDepthError(null);
+      return undefined;
+    }
+
+    let isActive = true;
+    const controller = new AbortController();
+
+    const run = async () => {
+      try {
+        setDepthLoading(true);
+        setDepthError(null);
+        const results = await Promise.allSettled(
+          depthCandidates.map(async (coin) => {
+            const res = await fetch(`/api/depth/${coin.pair}`, {
+              signal: controller.signal,
+            });
+            if (!res.ok) {
+              throw new Error(`Depth ${coin.pair} ${res.status}`);
+            }
+            const data = (await res.json()) as DepthResponse;
+            const signal = buildDepthSignal(coin, data);
+            return signal;
+          })
+        );
+
+        if (!isActive) return;
+
+        const signals = results
+          .flatMap((result) => (result.status === 'fulfilled' && result.value ? [result.value] : []))
+          .sort((a, b) => b.score - a.score);
+
+        const mainSignals = signals.filter((item) => item.score >= 70);
+        const watchSignals = signals
+          .filter((item) => item.score < 70 && item.score >= 55)
+          .slice(0, 8);
+
+        setDepthSignals(mainSignals);
+        setDepthWatchSignals(watchSignals);
+      } catch (err) {
+        if (!isActive) return;
+        if ((err as Error).name === 'AbortError') return;
+        console.error(err);
+      setDepthError('Gagal mengambil data orderbook.');
+      setDepthWatchSignals([]);
+    } finally {
+      if (isActive) setDepthLoading(false);
+    }
+    };
+
+    run();
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, [buildDepthSignal, depthCandidates, isAuthorized]);
 
   const topPickInsight = useMemo(() => {
     if (topPicks.length === 0) {
@@ -1380,8 +1870,7 @@ export default function HomePage() {
               <div>
                 <h3>Lab Hitung Mau Pump</h3>
                 <p className="muted">
-                  Kalkulasi langsung RR live, jarak TP/SL, gap ke entry, suhu range, historis sideway, efek BTC, dan grafik mini
-                  upside/downside supaya eksekusi makin yakin.
+                  Bahasa singkat: seberapa yakin % mau pump, kenapa layak dibeli, kapan boleh beli dulu/cicil, dan poin hati-hati.
                 </p>
               </div>
               <span className="badge badge-strong">Angka real-time</span>
@@ -1391,111 +1880,87 @@ export default function HomePage() {
               <div className="empty-state small">Menunggu sinyal mau pump untuk dihitung.</div>
             ) : (
               <div className="pump-math-grid">
-                {pumpMathList.slice(0, 4).map((item) => (
-                  <div key={item.coin.pair} className={`pump-math-card bias-${item.bias}`}>
-                    <div className="pump-math-head">
-                      <div>
-                        <div className="pump-math-pair">{item.coin.pair.toUpperCase()}</div>
-                        <div className="pump-math-sub">Volume {formatter.format(item.coin.volIdr)} IDR</div>
-                      </div>
-                      <div className="pump-math-score">Score {item.score}</div>
-                    </div>
+                {pumpMathList.slice(0, 4).map((item) => renderPumpMathCard(item))}
+              </div>
+            )}
+          </section>
 
-                    <div className="pump-math-metrics">
-                      <div>
-                        <div className="metric-label">Upside → TP</div>
-                        <div className="metric-value">{item.upsidePct.toFixed(1)}%</div>
-                        <div className="metric-sub">Jarak dari harga last ke TP</div>
-                      </div>
-                      <div>
-                        <div className="metric-label">Cushion → SL</div>
-                        <div className="metric-value">{item.downsidePct.toFixed(1)}%</div>
-                        <div className="metric-sub">Turun sebelum kena SL</div>
-                      </div>
-                      <div>
-                        <div className="metric-label">RR live</div>
-                        <div className="metric-value">{item.rrLive.toFixed(2)}x</div>
-                        <div className="metric-sub">Banding upside vs downside saat ini</div>
-                      </div>
-                      <div>
-                        <div className="metric-label">Gap ke Entry</div>
-                        <div className="metric-value">{item.entryGapPct.toFixed(1)}%</div>
-                        <div className="metric-sub">Minus = masih diskon</div>
-                      </div>
-                      <div>
-                        <div className="metric-label">Heat 24j</div>
-                        <div className="metric-value">{item.heatPct.toFixed(1)}%</div>
-                        <div className="metric-sub">Posisi di rentang low-high</div>
-                      </div>
-                      <div>
-                        <div className="metric-label">Momentum</div>
-                        <div className="metric-value">{item.momentumPct.toFixed(1)}%</div>
-                        <div className="metric-sub">Kenaikan dari low 24j</div>
-                      </div>
-                    </div>
+          <section id="pump-orderbook" className="section-card accent-math">
+            <div className="section-head">
+              <div>
+                <h3>Lab Hitung Mau Pump + Orderbook</h3>
+                <p className="muted">
+                  Analisis orderbook di bawah Lab Hitung Mau Pump: titik bid/sell terbesar, dominasi beli, dan aktivitas market.
+                </p>
+              </div>
+              <span className="badge badge-strong">Orderbook live</span>
+            </div>
 
-                    <div className="pump-math-diagnosis">
-                      <div>
-                        <div className="diag-label">Conviction</div>
-                        <div className="diag-value">{item.convictionLabel}</div>
-                        <div className="diag-sub">{item.convictionNote}</div>
-                      </div>
-                      <div>
-                        <div className="diag-label">Likuiditas</div>
-                        <div className="diag-value">{item.liquidityLabel}</div>
-                        <div className="diag-sub">Volume {formatter.format(item.coin.volIdr)} IDR</div>
-                      </div>
-                      <div>
-                        <div className="diag-label">Penjagaan</div>
-                        <div className="diag-value">{item.riskNote}</div>
-                        <div className="diag-sub">Pastikan SL siap dan hindari FOMO</div>
-                      </div>
-                    </div>
-
-                    <div className="pump-math-history">
-                      <div className="history-block">
-                        <div className="history-label">Sideway & histori</div>
-                        <div className="history-value">{item.sidewayLabel}</div>
-                        <div className="history-sub">{item.sidewayNote}</div>
-                      </div>
-                      <div className="history-block">
-                        <div className="history-label">Break & garis</div>
-                        <div className="history-value">{item.structureNote}</div>
-                        <div className="history-sub">{item.historyNote}</div>
-                      </div>
-                      <div className="history-block">
-                        <div className="history-label">Efek BTC</div>
-                        <div className="history-value">{item.btcDrag}</div>
-                        <div className="history-sub">Keyakinan {item.confidencePct}%</div>
-                      </div>
-                    </div>
-
-                    <div className="pump-math-spark">
-                      <div className="spark-label">Grafik mini: upside vs downside live</div>
-                      <div className="spark-track">
-                        <div className="spark-bar">
-                          <span
-                            className="spark-up"
-                            style={{ width: `${Math.min(100, Math.max(0, item.upsidePct))}%` }}
-                          />
+            {pumpMathList.length === 0 ? (
+              <div className="empty-state small">Menunggu sinyal mau pump untuk dianalisis.</div>
+            ) : pumpOrderbookLoading ? (
+              <div className="empty-state small">Memuat data orderbook untuk kandidat pump...</div>
+            ) : pumpOrderbookError ? (
+              <div className="empty-state small">{pumpOrderbookError}</div>
+            ) : (
+              <div className="orderbook-analysis-list">
+                {pumpOrderbookTargets.map((coin, idx) => {
+                  const orderbook = pumpOrderbookMap[coin.pair];
+                  if (!orderbook) {
+                    return (
+                      <div key={coin.pair} className="orderbook-analysis-item">
+                        <div className="orderbook-analysis-head">
+                          <span className="orderbook-analysis-rank">#{idx + 1}</span>
+                          <span className="orderbook-analysis-pair">{coin.pair.toUpperCase()}</span>
+                          <span className="orderbook-analysis-price">{formatPrice(coin.last)}</span>
                         </div>
-                        <div className="spark-bar">
-                          <span
-                            className="spark-down"
-                            style={{ width: `${Math.min(100, Math.max(0, item.downsidePct * 2))}%` }}
-                          />
+                        <div className="orderbook-analysis-note">Orderbook belum tersedia untuk koin ini.</div>
+                      </div>
+                    );
+                  }
+
+                  const flowLabel =
+                    orderbook.bidDominance >= 60
+                      ? 'Beli lebih berat'
+                      : orderbook.bidDominance <= 45
+                        ? 'Sell lebih berat'
+                        : 'Seimbang';
+
+                  return (
+                    <div key={coin.pair} className="orderbook-analysis-item">
+                      <div className="orderbook-analysis-head">
+                        <span className="orderbook-analysis-rank">#{idx + 1}</span>
+                        <span className="orderbook-analysis-pair">{coin.pair.toUpperCase()}</span>
+                        <span className="orderbook-analysis-price">{formatPrice(coin.last)}</span>
+                      </div>
+                      <div className="orderbook-analysis-grid">
+                        <div className="orderbook-analysis-block">
+                          <div className="orderbook-analysis-label">Dominasi order</div>
+                          <div className="orderbook-analysis-value">{orderbook.bidDominance.toFixed(0)}% bid</div>
+                          <div className="orderbook-analysis-sub">{flowLabel}</div>
+                        </div>
+                        <div className="orderbook-analysis-block">
+                          <div className="orderbook-analysis-label">Bid besar</div>
+                          <div className="orderbook-analysis-value">{formatRupiah(orderbook.bidWallValue)}</div>
+                          <div className="orderbook-analysis-sub">
+                            di {formatPrice(orderbook.bidWallPrice)} {orderbook.wallNear ? '(dekat harga)' : ''}
+                          </div>
+                        </div>
+                        <div className="orderbook-analysis-block">
+                          <div className="orderbook-analysis-label">Sell besar</div>
+                          <div className="orderbook-analysis-value">{formatRupiah(orderbook.askWallValue)}</div>
+                          <div className="orderbook-analysis-sub">di {formatPrice(orderbook.askWallPrice)}</div>
+                        </div>
+                        <div className="orderbook-analysis-block">
+                          <div className="orderbook-analysis-label">Aktivitas market</div>
+                          <div className="orderbook-analysis-value">{orderbook.activityLabel}</div>
+                          <div className="orderbook-analysis-sub">{orderbook.momentumLabel}</div>
                         </div>
                       </div>
-                      <div className="spark-meta">
-                        Upside {item.upsidePct.toFixed(1)}% • Downside {item.downsidePct.toFixed(1)}% • Heat {item.heatPct.toFixed(
-                          1
-                        )}% • Momentum {item.momentumPct.toFixed(1)}%
-                      </div>
+                      <div className="orderbook-analysis-note">{orderbook.reason}</div>
                     </div>
-
-                    <div className="pump-math-action">{item.actionLine}</div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </section>
@@ -1701,6 +2166,171 @@ export default function HomePage() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </section>
+
+          <section id="quick-scalp" className="section-card accent-scalp">
+            <div className="section-head">
+              <div>
+                <h3>SCALP COIN</h3>
+                <p className="muted">
+                  Tabel live koin murah (&lt; Rp100) ber-confidence tinggi, diurut otomatis berdasarkan skor akurat; gunakan
+                  pagination untuk jelajah banyak kandidat.
+                </p>
+              </div>
+              <span className="badge badge-neutral">Filter harga &lt; 100</span>
+            </div>
+
+            {scalpQuickList.length === 0 ? (
+              <div className="empty-state small">Belum ada koin murah yang valid untuk scalp cepat.</div>
+            ) : (
+              <div className="scalp-table-wrap">
+                <table className="scalp-table">
+                  <thead>
+                    <tr>
+                      <th>Prioritas</th>
+                      <th>Pair &amp; harga</th>
+                      <th>Skor</th>
+                      <th>Tembus TP</th>
+                      <th>Alasan singkat</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayedScalp.map((item, idx) => {
+                      const rank = (scalpPage - 1) * scalpPageSize + idx + 1;
+                      return (
+                        <tr key={item.pair}>
+                          <td>
+                            <div className="scalp-rank">#{rank}</div>
+                            <div className="scalp-rank-sub">Skor prioritas {item.priorityScore}</div>
+                          </td>
+                          <td>
+                            <div className="scalp-pair">{item.pair.toUpperCase()}</div>
+                            <div className="scalp-sub">Harga {formatPrice(item.price)} • Likuiditas {item.liquidity}</div>
+                          </td>
+                          <td>
+                            <div className="scalp-score">{item.confidence}% benar</div>
+                            <div className="scalp-sub">RR {item.rrLive.toFixed(2)}x • Upside {item.upsidePct.toFixed(1)}%</div>
+                          </td>
+                          <td>
+                            <div className="scalp-score">{item.tpChance}%</div>
+                            <div className="scalp-sub">TP1 {formatPrice(item.tp1.price)} ({item.tp1.pct.toFixed(1)}%) • TP2 {formatPrice(item.tp2.price)} ({item.tp2.pct.toFixed(1)}%)</div>
+                          </td>
+                          <td>
+                            <div className="scalp-reason">{item.reasonShort}</div>
+                            <div className="scalp-sub">{item.entryNote}</div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                <div className="scalp-pagination">
+                  <button
+                    className="scalp-page-btn"
+                    onClick={() => setScalpPage((p) => Math.max(1, p - 1))}
+                    disabled={scalpPage === 1}
+                  >
+                    &larr; Sebelumnya
+                  </button>
+                  <div className="scalp-page-indicator">
+                    Halaman {scalpPage} / {totalScalpPages}
+                  </div>
+                  <button
+                    className="scalp-page-btn"
+                    onClick={() => setScalpPage((p) => Math.min(totalScalpPages, p + 1))}
+                    disabled={scalpPage === totalScalpPages}
+                  >
+                    Selanjutnya &rarr;
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section id="depth-radar" className="section-card depth-section">
+            <div className="section-head">
+              <div>
+                <h3>Radar Orderbook Meledak</h3>
+                <p className="muted">
+                  Deteksi koin yang harga bolak-balik dalam range sempit, tapi bid besar menumpuk. Kombinasi ini sering jadi
+                  tanda koin siap meledak jika ada trigger.
+                </p>
+              </div>
+              <span className="badge badge-neutral">Sumber: /api/depth + /api/tickers</span>
+            </div>
+
+            {depthLoading ? (
+              <div className="empty-state small">Memuat data orderbook terbaru...</div>
+            ) : depthError ? (
+              <div className="empty-state small">{depthError}</div>
+            ) : depthSignals.length === 0 ? (
+              <div className="empty-state small">Belum ada kandidat orderbook meledak yang memenuhi syarat.</div>
+            ) : (
+              <div className="depth-table-wrap">
+                <table className="depth-table">
+                  <thead>
+                    <tr>
+                      <th>Prioritas</th>
+                      <th>Pair &amp; harga</th>
+                      <th>Skor meledak</th>
+                      <th>Bid dominance</th>
+                      <th>Bid wall</th>
+                      <th>Alasan singkat</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {depthSignals.map((item, idx) => (
+                      <tr key={item.pair}>
+                        <td>
+                          <div className="depth-rank">#{idx + 1}</div>
+                          <div className="depth-sub">Range {item.rangePct.toFixed(1)}%</div>
+                        </td>
+                        <td>
+                          <div className="depth-pair">{item.pair.toUpperCase()}</div>
+                          <div className="depth-sub">Harga {formatPrice(item.last)}</div>
+                        </td>
+                        <td>
+                          <div className="depth-score">{item.score}</div>
+                          <div className="depth-sub">Posisi {Math.round(item.posInRange * 100)}%</div>
+                        </td>
+                        <td>
+                          <div className="depth-score">{item.bidDominance.toFixed(0)}%</div>
+                          <div className="depth-sub">Bid lebih berat</div>
+                        </td>
+                        <td>
+                          <div className="depth-score">{formatRupiah(item.wallValue)}</div>
+                          <div className="depth-sub">
+                            di {formatPrice(item.wallPrice)} {item.wallNear ? 'dekat harga' : ''}
+                          </div>
+                        </td>
+                        <td>
+                          <div className="depth-reason">{item.reason}</div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {depthWatchSignals.length > 0 && (
+              <div className="depth-watch">
+                <div className="depth-watch-title">Kandidat pantauan (belum yakin)</div>
+                <div className="depth-watch-list">
+                  {depthWatchSignals.map((item) => (
+                    <div key={item.pair} className="depth-watch-card">
+                      <div className="depth-watch-head">
+                        <div className="depth-watch-pair">{item.pair.toUpperCase()}</div>
+                        <div className="depth-watch-score">{item.score}% yakin</div>
+                      </div>
+                      <div className="depth-watch-sub">Harga {formatPrice(item.last)} • Bid {item.bidDominance.toFixed(0)}%</div>
+                      <div className="depth-watch-reason">{item.reason}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </section>
