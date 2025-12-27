@@ -46,13 +46,20 @@ function computeSwingLevels(last: number, high: number, low: number): SwingLevel
   if (!isFinite(last) || last <= 0) return null;
 
   const baseRange = high > low ? high - low : last * 0.03;
+  const posInRange = high > low ? (last - low) / baseRange : 0.5;
+  const moveFromLowPct = low > 0 ? ((last - low) / low) * 100 : 0;
+  const isOverextended = posInRange >= 0.78 || moveFromLowPct >= 25;
   let atrApprox = baseRange / 1.8;
   if (!isFinite(atrApprox) || atrApprox <= 0) {
     atrApprox = last * 0.03;
   }
 
   const dipAmount = Math.min(last * 0.005, atrApprox * 0.3); // koreksi kecil
-  let entry = last - dipAmount;
+  const baseFloor = low > 0 ? low * 1.02 : low + baseRange * 0.1;
+  const baseEntry = low + baseRange * 0.2;
+  let entry = isOverextended
+    ? Math.min(last * 0.98, Math.max(baseEntry, baseFloor))
+    : last - dipAmount;
   if (entry <= 0) entry = last * 0.99;
 
   let riskAmt = Math.max(entry * 0.03, atrApprox * 1.2); // minimal 3% atau 1.2x ATR approx
@@ -155,8 +162,10 @@ function getPumpStatus(
   const moveFromLowPct = ((last - low) / low) * 100;
 
   if (
-    posInRange >= 0.7 &&
-    moveFromLowPct >= 12 &&
+    posInRange >= 0.4 &&
+    posInRange <= 0.72 &&
+    moveFromLowPct >= 6 &&
+    moveFromLowPct <= 26 &&
     volIdr >= 150_000_000 &&
     range / last >= 0.05
   ) {
@@ -269,12 +278,23 @@ function buildReasons(coin: CoinSignal): string[] {
     );
   }
 
+  const fmt = (v: number) =>
+    new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(v);
+
+  if (coin.last > 0) {
+    const entryGapPct = ((coin.entry - coin.last) / coin.last) * 100;
+    if (entryGapPct <= -4) {
+      reasons.push(
+        `Harga sudah jauh di atas entry; entry dihitung dari area dasar supaya tidak FOMO. Tunggu retrace mendekati ${fmt(
+          coin.entry
+        )} IDR agar risiko minus lebih kecil.`
+      );
+    }
+  }
+
   reasons.push(
     `Range harga harian (high-low) sekitar ${rangePct}% dari harga sekarang, cukup lebar untuk target swing beberapa hari (bukan scalping).`
   );
-
-  const fmt = (v: number) =>
-    new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(v);
 
   reasons.push(
     `Level trading yang disarankan: Entry sekitar ${fmt(coin.entry)} IDR, TP di ${fmt(
