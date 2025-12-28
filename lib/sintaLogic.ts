@@ -58,10 +58,10 @@ function computeSwingLevels(
 
   // Entry utamakan harga dasar (dekat low) agar tidak telanjur mengejar harga.
   const pullbackFactor =
-    moveFromLowPct >= 18 ? 0.12 : moveFromLowPct >= 10 ? 0.18 : 0.26;
+    moveFromLowPct >= 18 ? 0.16 : moveFromLowPct >= 10 ? 0.22 : 0.3;
   const baseEntry = low + baseRange * pullbackFactor;
   const shouldStayNear = posInRange <= 0.35;
-  let entry = shouldStayNear ? last : Math.min(last, baseEntry);
+  let entry = shouldStayNear ? Math.min(last, baseEntry) : baseEntry;
   if (entry < low * 1.01) entry = low * 1.01;
   if (entry <= 0) entry = last * 0.99;
 
@@ -74,10 +74,13 @@ function computeSwingLevels(
     return null;
   }
 
-  // TP diarahkan ke area tengah-atas range, atau minimal RR 2.4x.
-  const tpFromRange = entry + baseRange * 0.6;
-  const tpFromRisk = entry + riskAmt * 2.4;
+  // TP diarahkan ke area tengah-atas range, atau minimal RR 2.6x.
+  const tpFromRange = entry + baseRange * 0.65;
+  const tpFromRisk = entry + riskAmt * 2.6;
   let tp = Math.max(tpFromRange, tpFromRisk);
+  if (tp <= entry) {
+    tp = entry + Math.max(riskAmt * 2.6, baseRange * 0.5);
+  }
 
   if (!isFinite(tp) || tp <= entry) {
     return null;
