@@ -61,7 +61,10 @@ function computeSwingLevels(
     moveFromLowPct >= 18 ? 0.16 : moveFromLowPct >= 10 ? 0.22 : 0.3;
   const baseEntry = low + baseRange * pullbackFactor;
   const shouldStayNear = posInRange <= 0.35;
-  let entry = shouldStayNear ? Math.min(last, baseEntry) : baseEntry;
+  let entry = Math.min(last, baseEntry);
+  if (!shouldStayNear && entry > last) {
+    entry = last * 0.995;
+  }
   if (entry < low * 1.01) entry = low * 1.01;
   if (entry <= 0) entry = last * 0.99;
 
