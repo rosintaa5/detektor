@@ -42,52 +42,49 @@ interface SwingLevels {
   rr: number;
 }
 
-function computeSwingLevels(last: number, high: number, low: number): SwingLevels | null {
-  if (!isFinite(last) || last <= 0) return null;
-
-  const baseRange = high > low ? high - low : last * 0.03;
-  let atrApprox = baseRange / 1.8;
-  if (!isFinite(atrApprox) || atrApprox <= 0) {
-    atrApprox = last * 0.03;
-  }
-
-  const dipAmount = Math.min(last * 0.005, atrApprox * 0.3); // koreksi kecil
-  let entry = last - dipAmount;
-  if (entry <= 0) entry = last * 0.99;
-
-  let riskAmt = Math.max(entry * 0.03, atrApprox * 1.2); // minimal 3% atau 1.2x ATR approx
-  let sl = entry - riskAmt;
-  if (sl <= 0) {
-    sl = entry * 0.95;
-    riskAmt = entry - sl;
-  }
-
-  let rewardAmt = Math.max(entry * 0.12, atrApprox * 3); // minimal 12% atau 3x ATR approx
-  let tp = entry + rewardAmt;
-
-  const riskPct = ((entry - sl) / entry) * 100;
-  let rewardPct = ((tp - entry) / entry) * 100;
-
-  const maxRiskPct = 8;
-  if (riskPct > maxRiskPct) {
-    const maxRiskAmt = (maxRiskPct / 100) * entry;
-    sl = entry - maxRiskAmt;
-  }
-
-  const finalRisk = entry - sl;
-  rewardAmt = tp - entry;
-
-  if (!isFinite(finalRisk) || finalRisk <= 0) {
+function computeSwingLevels(
+  last: number,
+  high: number,
+  low: number,
+  posInRange: number,
+  moveFromLowPct: number
+): SwingLevels | null {
+  if (!isFinite(last) || last <= 0 || !isFinite(high) || !isFinite(low) || high <= 0 || low <= 0) {
     return null;
   }
 
-  if (rewardAmt < finalRisk * 2) {
-    rewardAmt = finalRisk * 2;
-    tp = entry + rewardAmt;
+  const baseRange = high > low ? high - low : last * 0.03;
+  if (!isFinite(baseRange) || baseRange <= 0) return null;
+
+  // Entry utamakan harga dasar (dekat low) agar tidak telanjur mengejar harga.
+  const pullbackFactor =
+    moveFromLowPct >= 25 ? 0.08 : moveFromLowPct >= 15 ? 0.14 : moveFromLowPct >= 8 ? 0.2 : 0.3;
+  const baseEntry = low + baseRange * pullbackFactor;
+  const shouldStayNear = posInRange <= 0.35;
+  let entry = shouldStayNear ? last : Math.min(last, baseEntry);
+  if (entry < low * 1.01) entry = low * 1.01;
+  if (entry <= 0) entry = last * 0.99;
+
+  // SL di bawah low untuk mencegah nyangkut saat koreksi.
+  let sl = Math.min(entry * 0.97, low * 0.985);
+  if (sl <= 0) sl = entry * 0.95;
+
+  const riskAmt = entry - sl;
+  if (!isFinite(riskAmt) || riskAmt <= 0) {
+    return null;
   }
 
-  rewardPct = ((tp - entry) / entry) * 100;
-  const rr = (tp - entry) / finalRisk;
+  // TP diarahkan lebih jauh sesuai pola pump, atau minimal RR 2.8x.
+  const tpFromRange = entry + baseRange * 0.8;
+  const tpFromRisk = entry + riskAmt * 2.8;
+  let tp = Math.max(tpFromRange, tpFromRisk);
+
+  if (!isFinite(tp) || tp <= entry) {
+    return null;
+  }
+
+  const rewardPct = ((tp - entry) / entry) * 100;
+  const rr = (tp - entry) / riskAmt;
 
   return {
     entry,
@@ -154,9 +151,12 @@ function getPumpStatus(
   const posInRange = (last - low) / range;
   const moveFromLowPct = ((last - low) / low) * 100;
 
+  const notTooHigh = posInRange <= 0.72 && moveFromLowPct <= 32;
+
   if (
-    posInRange >= 0.7 &&
-    moveFromLowPct >= 12 &&
+    notTooHigh &&
+    posInRange >= 0.55 &&
+    moveFromLowPct >= 8 &&
     volIdr >= 150_000_000 &&
     range / last >= 0.05
   ) {
@@ -180,21 +180,21 @@ function getSignal(args: {
 
   if (!Number.isFinite(rr) || rr <= 1) return 'none';
   if (volIdr < MIN_VOL_IDR) return 'none';
+  if (pricePhase === 'sudah_telanjur_naik') return 'none';
 
   const goodRr = rr >= 2;
   const okRr = rr >= 1.6;
   const tpOk = tpFromEntryPct >= 8;
 
   const nearLow = posInRange <= 0.6;
-  const notTooHigh = posInRange <= 0.85;
+  const notTooHigh = posInRange <= 0.72;
 
-  const moveHealthy = moveFromLowPct >= 3 && moveFromLowPct <= 40;
+  const moveHealthy = moveFromLowPct >= 3 && moveFromLowPct <= 28;
 
   if (
     volIdr >= STRONG_VOL_IDR &&
     goodRr &&
     tpOk &&
-    pricePhase !== 'sudah_telanjur_naik' &&
     nearLow &&
     moveHealthy
   ) {
@@ -205,7 +205,6 @@ function getSignal(args: {
     volIdr >= STRONG_VOL_IDR * 0.7 &&
     okRr &&
     tpOk &&
-    pricePhase !== 'sudah_telanjur_naik' &&
     notTooHigh
   ) {
     return 'buy';
@@ -254,7 +253,7 @@ function buildReasons(coin: CoinSignal): string[] {
     );
   } else if (coin.pricePhase === 'sudah_telanjur_naik') {
     reasons.push(
-      `Harga sudah mendekati high 24 jam (~${posPct}% dari low ke high) dan telah naik sekitar ${moveLowPct}% dari low; risiko koreksi cukup besar, masuk posisi perlu ekstra hati-hati.`
+      `Harga sudah mendekati high 24 jam (~${posPct}% dari low ke high) dan telah naik sekitar ${moveLowPct}% dari low; jangan kejar. Entry aman menunggu harga turun dekat area dasar.`
     );
   } else {
     reasons.push(
@@ -313,25 +312,31 @@ export function buildCoinSignals(rawTickers: RawTicker[]): CoinSignal[] {
     const moveFromLowPct = low > 0 ? ((last - low) / low) * 100 : 0;
     const moveFromHighPct = high > 0 ? ((high - last) / high) * 100 : 0;
 
-    const swing = computeSwingLevels(last, high, low);
+    const swing = computeSwingLevels(last, high, low, posInRange, moveFromLowPct);
     if (!swing) continue;
 
     const pricePhase = getPricePhase(last, high, low);
     const pumpStatus = getPumpStatus(last, high, low, volIdr);
 
-    const signal = getSignal({
-      volIdr,
-      posInRange,
-      moveFromLowPct,
-      rr: swing.rr,
-      pricePhase,
-      pumpStatus,
-      tpFromEntryPct: swing.tpFromEntryPct,
-    });
+  let signal = getSignal({
+    volIdr,
+    posInRange,
+    moveFromLowPct,
+    rr: swing.rr,
+    pricePhase,
+    pumpStatus,
+    tpFromEntryPct: swing.tpFromEntryPct,
+  });
 
-    if (signal === 'none') {
+  if (signal === 'none') {
+    const allowLateWatch =
+      pumpStatus === 'mau_pump' && pricePhase === 'sudah_telanjur_naik' && volIdr >= WATCH_MIN_VOL_IDR;
+    if (allowLateWatch) {
+      signal = 'watch';
+    } else {
       continue;
     }
+  }
 
     const coin: CoinSignal = {
       pair,
