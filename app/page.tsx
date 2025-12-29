@@ -1138,18 +1138,6 @@ export default function HomePage() {
         .slice(0, 200),
     [safeAll]
   );
-  const [potentialPage, setPotentialPage] = useState(1);
-  const potentialPageSize = 12;
-  const totalPotentialPages = Math.max(1, Math.ceil(potentialList.length / potentialPageSize));
-
-  useEffect(() => {
-    setPotentialPage((prev) => Math.min(Math.max(1, prev), totalPotentialPages));
-  }, [totalPotentialPages]);
-
-  const displayedPotential = useMemo(
-    () => potentialList.slice((potentialPage - 1) * potentialPageSize, potentialPage * potentialPageSize),
-    [potentialList, potentialPage, potentialPageSize]
-  );
 
 
   const renderPumpMathCard = useCallback(
@@ -1968,14 +1956,26 @@ export default function HomePage() {
                   Bahasa singkat: seberapa yakin % mau pump, kenapa layak dibeli, kapan boleh beli dulu/cicil, dan poin hati-hati.
                 </p>
               </div>
-              <span className="badge badge-strong">Angka real-time</span>
+              <div className="section-actions">
+                <button
+                  className="refresh-btn"
+                  type="button"
+                  onClick={() => {
+                    fetchData();
+                    setNowTs(Date.now());
+                  }}
+                >
+                  Refresh
+                </button>
+                <span className="badge badge-strong">Angka real-time</span>
+              </div>
             </div>
 
             {pumpMathList.length === 0 ? (
               <div className="empty-state small">Menunggu sinyal mau pump untuk dihitung.</div>
             ) : (
               <div className="pump-math-grid">
-                {pumpMathList.slice(0, 4).map((item) => renderPumpMathCard(item))}
+                {pumpMathList.slice(0, 12).map((item) => renderPumpMathCard(item))}
               </div>
             )}
           </section>
@@ -1985,7 +1985,7 @@ export default function HomePage() {
               <div>
                 <h3>INTI DETEKSI KOIN AMAN (SOLANA)</h3>
                 <p className="muted">
-                  Filter anti-noise untuk token Solana dari DexScreener. Hanya alert jika aman + sedang naik.
+                  Filter anti-noise untuk token Solana dari DexScreener. Monitoring aman, waiting, dan kandidat potensial di satu tempat.
                 </p>
               </div>
               <span className="badge badge-neutral">Safety + Momentum (longgar)</span>
@@ -1995,7 +1995,7 @@ export default function HomePage() {
               <div className="empty-state small">Memuat kandidat aman...</div>
             ) : safeError ? (
               <div className="empty-state small">{safeError}</div>
-            ) : safeAlerts.length === 0 && safeWaiting.length === 0 ? (
+            ) : safeAlerts.length === 0 && safeWaiting.length === 0 && safeAll.length === 0 ? (
               <div className="empty-state small">Belum ada kandidat “naik + aman”.</div>
             ) : (
               <>
@@ -2070,181 +2070,81 @@ export default function HomePage() {
                     </div>
                   </div>
                 )}
+
+                {displayedSafeAll.length > 0 && (
+                  <div className="safe-all-block">
+                    <div className="safe-waiting-title">Daftar semua koin aman</div>
+                    <div className="safe-table-wrap">
+                      <table className="safe-table">
+                        <thead>
+                          <tr>
+                            <th>Token</th>
+                            <th>Safety</th>
+                            <th>Harga</th>
+                            <th>Performa 5m</th>
+                            <th>Liquidity</th>
+                            <th>Info</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {displayedSafeAll.map((alert) => (
+                            <tr key={`safe-${alert.pairAddress}`}>
+                              <td>
+                                <div className="safe-token">{alert.symbol}</div>
+                                <div className="safe-sub">
+                                  {alert.dexId.toUpperCase()} • {alert.pairAddress.slice(0, 6)}...
+                                </div>
+                              </td>
+                              <td>
+                                <div className="safe-score">{alert.safetyScore}</div>
+                                <div className="safe-sub">Ratio {alert.ratio.toFixed(2)}</div>
+                              </td>
+                              <td>
+                                <div className="safe-score">${alert.priceUsd.toFixed(6)}</div>
+                                <div className="safe-sub">Vol 1h {alert.vol1.toFixed(0)}</div>
+                              </td>
+                              <td>
+                                <div className="safe-score">{alert.pch5.toFixed(2)}%</div>
+                                <div className="safe-sub">Vol 5m {alert.vol5.toFixed(0)}</div>
+                              </td>
+                              <td>
+                                <div className="safe-score">${alert.liq.toFixed(0)}</div>
+                                <div className="safe-sub">{alert.tokenAddress.slice(0, 10)}...</div>
+                              </td>
+                              <td>
+                                <div className="safe-reason">{alert.reasons.join(', ')}</div>
+                                <a className="safe-link" href={alert.url} target="_blank" rel="noreferrer">
+                                  Buka DexScreener
+                                </a>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+
+                      <div className="safe-pagination">
+                        <button
+                          className="safe-page-btn"
+                          onClick={() => setSafePage((p) => Math.max(1, p - 1))}
+                          disabled={safePage === 1}
+                        >
+                          &larr; Sebelumnya
+                        </button>
+                        <div className="safe-page-indicator">
+                          Halaman {safePage} / {totalSafePages}
+                        </div>
+                        <button
+                          className="safe-page-btn"
+                          onClick={() => setSafePage((p) => Math.min(totalSafePages, p + 1))}
+                          disabled={safePage === totalSafePages}
+                        >
+                          Selanjutnya &rarr;
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </>
-            )}
-          </section>
-
-          <section id="safe-all" className="section-card accent-safe">
-            <div className="section-head">
-              <div>
-                <h3>Daftar Semua Koin Aman (Safety)</h3>
-                <p className="muted">
-                  Daftar token Solana yang lolos filter keamanan dasar. Status “BUY” bila sudah tembus aman + momentum.
-                </p>
-              </div>
-              <span className="badge badge-neutral">Safety (lolos filter longgar)</span>
-            </div>
-
-            {safeLoading ? (
-              <div className="empty-state small">Memuat daftar aman...</div>
-            ) : safeError ? (
-              <div className="empty-state small">{safeError}</div>
-            ) : displayedSafeAll.length === 0 ? (
-              <div className="empty-state small">Belum ada koin aman yang terdeteksi.</div>
-            ) : (
-              <div className="safe-table-wrap">
-                <table className="safe-table">
-                  <thead>
-                    <tr>
-                      <th>Token</th>
-                      <th>Safety</th>
-                      <th>Harga</th>
-                      <th>Performa 5m</th>
-                      <th>Liquidity</th>
-                      <th>Info</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayedSafeAll.map((alert) => (
-                      <tr key={`safe-${alert.pairAddress}`}>
-                        <td>
-                          <div className="safe-token">{alert.symbol}</div>
-                          <div className="safe-sub">{alert.dexId.toUpperCase()} • {alert.pairAddress.slice(0, 6)}...</div>
-                        </td>
-                        <td>
-                          <div className="safe-score">{alert.safetyScore}</div>
-                          <div className="safe-sub">Ratio {alert.ratio.toFixed(2)}</div>
-                        </td>
-                        <td>
-                          <div className="safe-score">${alert.priceUsd.toFixed(6)}</div>
-                          <div className="safe-sub">Vol 1h {alert.vol1.toFixed(0)}</div>
-                        </td>
-                        <td>
-                          <div className="safe-score">{alert.pch5.toFixed(2)}%</div>
-                          <div className="safe-sub">Vol 5m {alert.vol5.toFixed(0)}</div>
-                        </td>
-                        <td>
-                          <div className="safe-score">${alert.liq.toFixed(0)}</div>
-                          <div className="safe-sub">{alert.tokenAddress.slice(0, 10)}...</div>
-                        </td>
-                        <td>
-                          <div className="safe-reason">{alert.reasons.join(', ')}</div>
-                          <a className="safe-link" href={alert.url} target="_blank" rel="noreferrer">
-                            Buka DexScreener
-                          </a>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                <div className="safe-pagination">
-                  <button
-                    className="safe-page-btn"
-                    onClick={() => setSafePage((p) => Math.max(1, p - 1))}
-                    disabled={safePage === 1}
-                  >
-                    &larr; Sebelumnya
-                  </button>
-                  <div className="safe-page-indicator">
-                    Halaman {safePage} / {totalSafePages}
-                  </div>
-                  <button
-                    className="safe-page-btn"
-                    onClick={() => setSafePage((p) => Math.min(totalSafePages, p + 1))}
-                    disabled={safePage === totalSafePages}
-                  >
-                    Selanjutnya &rarr;
-                  </button>
-                </div>
-              </div>
-            )}
-          </section>
-
-          <section id="safe-potential" className="section-card accent-safe">
-            <div className="section-head">
-              <div>
-                <h3>Daftar Koin Potensi Bagus (DEX)</h3>
-                <p className="muted">
-                  Semua kandidat DEX yang lolos filter keamanan, diurutkan berdasarkan momentum &amp; safety agar mudah dipantau.
-                </p>
-              </div>
-              <span className="badge badge-neutral">Top momentum</span>
-            </div>
-
-            {safeLoading ? (
-              <div className="empty-state small">Memuat daftar potensi...</div>
-            ) : safeError ? (
-              <div className="empty-state small">{safeError}</div>
-            ) : displayedPotential.length === 0 ? (
-              <div className="empty-state small">Belum ada kandidat potensial yang terdeteksi.</div>
-            ) : (
-              <div className="safe-table-wrap">
-                <table className="safe-table">
-                  <thead>
-                    <tr>
-                      <th>Token</th>
-                      <th>Momentum</th>
-                      <th>Safety</th>
-                      <th>Harga</th>
-                      <th>Performa 5m</th>
-                      <th>Liquidity</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayedPotential.map((alert) => (
-                      <tr key={`potential-${alert.pairAddress}`}>
-                        <td>
-                          <div className="safe-token">{alert.symbol}</div>
-                          <div className="safe-sub">{alert.dexId.toUpperCase()} • {alert.pairAddress.slice(0, 6)}...</div>
-                        </td>
-                        <td>
-                          <div className="safe-score">{alert.momentumScore}</div>
-                          <div className="safe-sub">Ratio {alert.ratio.toFixed(2)}</div>
-                        </td>
-                        <td>
-                          <div className="safe-score">{alert.safetyScore}</div>
-                          <div className="safe-sub">Vol 1h {alert.vol1.toFixed(0)}</div>
-                        </td>
-                        <td>
-                          <div className="safe-score">${alert.priceUsd.toFixed(6)}</div>
-                          <div className="safe-sub">Vol 5m {alert.vol5.toFixed(0)}</div>
-                        </td>
-                        <td>
-                          <div className="safe-score">{alert.pch5.toFixed(2)}%</div>
-                          <div className="safe-sub">{alert.reasons.join(', ')}</div>
-                        </td>
-                        <td>
-                          <div className="safe-score">${alert.liq.toFixed(0)}</div>
-                          <a className="safe-link" href={alert.url} target="_blank" rel="noreferrer">
-                            Buka DexScreener
-                          </a>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                <div className="safe-pagination">
-                  <button
-                    className="safe-page-btn"
-                    onClick={() => setPotentialPage((p) => Math.max(1, p - 1))}
-                    disabled={potentialPage === 1}
-                  >
-                    &larr; Sebelumnya
-                  </button>
-                  <div className="safe-page-indicator">
-                    Halaman {potentialPage} / {totalPotentialPages}
-                  </div>
-                  <button
-                    className="safe-page-btn"
-                    onClick={() => setPotentialPage((p) => Math.min(totalPotentialPages, p + 1))}
-                    disabled={potentialPage === totalPotentialPages}
-                  >
-                    Selanjutnya &rarr;
-                  </button>
-                </div>
-              </div>
             )}
           </section>
 
