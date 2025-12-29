@@ -924,12 +924,12 @@ export default function HomePage() {
         const entryGapPct = Number.isFinite(coin.last) && coin.last > 0 ? ((coin.entry - coin.last) / coin.last) * 100 : 0;
         const heatPct = Math.max(0, Math.min(100, coin.posInRange * 100));
         const momentumPct = Math.max(0, coin.moveFromLowPct);
-        const isLate = coin.pricePhase === 'sudah_telanjur_naik' || entryGapPct < -4;
+        const isLate = coin.pricePhase === 'sudah_telanjur_naik' || entryGapPct < -3;
         const volumeScore = Math.max(18, Math.min(40, Math.log10(Math.max(coin.volIdr, 1)) * 12 - 36));
         const rrScore = Math.min(28, Math.max(0, rrLive * 9));
         const setupScore = Math.min(18, Math.max(0, 18 - Math.abs(heatPct - 58) * 0.25));
         const momentumScore = Math.min(24, Math.max(0, momentumPct * 0.7));
-        const score = Math.round(volumeScore + rrScore + setupScore + momentumScore - (isLate ? 18 : 0));
+        const score = Math.round(volumeScore + rrScore + setupScore + momentumScore - (isLate ? 12 : 0));
 
         const coilPct = Math.max(0, Math.min(25, ((coin.high - coin.low) / Math.max(coin.low, 1)) * 100));
         const sidewayLabel = coilPct <= 6 ? 'Sideway ketat' : coilPct <= 12 ? 'Sideway lebar' : 'Range lebar';
@@ -1018,7 +1018,10 @@ export default function HomePage() {
               : 'RR rendah, dahulukan proteksi';
 
         const riskNote = `${bufferNote} • ${entryNote}`;
-        const confidencePct = Math.min(99, Math.max(45, Math.round(score * 0.9 + (btcContext.bias === 'bullish' ? 4 : -6))));
+        const confidencePct = Math.min(
+          99,
+          Math.max(50, Math.round(score * 0.95 + (btcContext.bias === 'bullish' ? 6 : -4)))
+        );
 
         return {
           coin,
@@ -1172,7 +1175,7 @@ export default function HomePage() {
             : 'Bisa cicil bertahap: likuiditas cukup dan heat aman.';
 
       const cautionLine = `Hati-hati: ${item.riskNote.toLowerCase()}.`;
-      const tpChance = Math.min(99, Math.max(35, item.confidencePct));
+      const tpChance = Math.min(99, Math.max(45, Math.round(item.confidencePct * 0.92 + item.rrLive * 6)));
       const tpLine = `Prediksi tembus TP: ${tpChance}% (gabungan score & bias BTC).`;
       const supportLine = `Pendukung: ${item.structureNote}; ${item.btcDrag}; Upside ${item.upsidePct.toFixed(
         1

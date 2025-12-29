@@ -58,13 +58,11 @@ function computeSwingLevels(
 
   // Entry utamakan harga dasar (dekat low) agar tidak telanjur mengejar harga.
   const pullbackFactor =
-    moveFromLowPct >= 18 ? 0.16 : moveFromLowPct >= 10 ? 0.22 : 0.3;
+    moveFromLowPct >= 18 ? 0.14 : moveFromLowPct >= 10 ? 0.2 : 0.28;
   const baseEntry = low + baseRange * pullbackFactor;
-  const shouldStayNear = posInRange <= 0.35;
-  let entry = Math.min(last, baseEntry);
-  if (!shouldStayNear && entry > last) {
-    entry = last * 0.995;
-  }
+  const shouldStayNear = posInRange <= 0.45;
+  let entry = shouldStayNear ? Math.max(low * 1.01, Math.min(last, baseEntry)) : baseEntry;
+  if (entry > last) entry = last * 0.992;
   if (entry < low * 1.01) entry = low * 1.01;
   if (entry <= 0) entry = last * 0.99;
 
