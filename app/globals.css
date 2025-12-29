@@ -1316,6 +1316,12 @@ a {
   gap: 0.5rem;
 }
 
+.safe-waiting-progress {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #c7d2fe;
+}
+
 
 .safe-pagination {
   display: flex;

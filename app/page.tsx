@@ -81,6 +81,7 @@ interface SafeAlert {
   url: string;
   safetyScore: number;
   momentumScore: number;
+  confirmProgress?: number;
   priceUsd: number;
   pch5: number;
   vol5: number;
@@ -627,7 +628,11 @@ export default function HomePage() {
         if (safetyScore >= 75 && momentumScore >= 70) {
           candidates.push(alert);
         } else {
-          waiting.push(alert);
+          const progress = Math.min(
+            100,
+            Math.round(((Math.min(safetyScore / 75, 1) + Math.min(momentumScore / 70, 1)) / 2) * 100)
+          );
+          waiting.push({ ...alert, confirmProgress: progress });
           const existing = safeStateRef.current.get(best.pairAddress);
           if (existing?.status === 'candidate') {
             safeStateRef.current.delete(best.pairAddress);
@@ -677,7 +682,7 @@ export default function HomePage() {
       setSafeWaiting(
         waiting
           .sort((a, b) => b.safetyScore - a.safetyScore || b.momentumScore - a.momentumScore)
-          .slice(0, 12)
+          .slice(0, 30)
       );
       setSafeAll(safeList.sort((a, b) => b.safetyScore - a.safetyScore || b.liq - a.liq));
     } catch (err: unknown) {
@@ -1975,13 +1980,16 @@ export default function HomePage() {
 
                 {safeWaiting.length > 0 && (
                   <div className="safe-waiting">
-                    <div className="safe-waiting-title">Waiting list (belum confirm)</div>
+                    <div className="safe-waiting-title">Waiting list (menuju confirm)</div>
                     <div className="safe-waiting-grid">
                       {safeWaiting.map((item) => (
                         <div key={item.pairAddress} className="safe-waiting-card">
                           <div className="safe-waiting-head">
                             <div className="safe-token">{item.symbol}</div>
                             <div className="safe-score">Safety {item.safetyScore}</div>
+                          </div>
+                          <div className="safe-waiting-progress">
+                            Menuju confirm {item.confirmProgress ?? 0}%
                           </div>
                           <div className="safe-sub">Momentum {item.momentumScore} • {item.pch5.toFixed(2)}%</div>
                           <div className="safe-sub">Liq ${item.liq.toFixed(0)} • Ratio {item.ratio.toFixed(2)}</div>
