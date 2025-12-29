@@ -29,6 +29,68 @@ interface NewsResponse {
   news: NewsItem[];
 }
 
+interface DexPair {
+  pairAddress: string;
+  dexId: string;
+  url: string;
+  priceUsd?: string;
+  pairCreatedAt?: number;
+  liquidity?: {
+    usd?: number;
+  };
+  volume?: {
+    m5?: number;
+    h1?: number;
+  };
+  priceChange?: {
+    m5?: number;
+  };
+  txns?: {
+    m5?: {
+      buys?: number;
+      sells?: number;
+    };
+  };
+  baseToken?: {
+    symbol?: string;
+    address?: string;
+  };
+  quoteToken?: {
+    symbol?: string;
+  };
+}
+
+interface DexResponse {
+  pairs?: DexPair[];
+}
+
+interface DexBoostToken {
+  tokenAddress?: string;
+  address?: string;
+  chainId?: string;
+  token?: {
+    address?: string;
+  };
+}
+
+interface SafeAlert {
+  symbol: string;
+  tokenAddress: string;
+  pairAddress: string;
+  dexId: string;
+  url: string;
+  safetyScore: number;
+  momentumScore: number;
+  confirmProgress?: number;
+  priceUsd: number;
+  pch5: number;
+  vol5: number;
+  vol1: number;
+  liq: number;
+  ratio: number;
+  reasons: string[];
+}
+
 interface Prediction {
   asset: string;
   direction: PredictionDirection;
@@ -78,13 +140,33 @@ export default function HomePage() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [newsError, setNewsError] = useState<string | null>(null);
+  const [safeAlerts, setSafeAlerts] = useState<SafeAlert[]>([]);
+  const [safeWaiting, setSafeWaiting] = useState<SafeAlert[]>([]);
+  const [safeAll, setSafeAll] = useState<SafeAlert[]>([]);
+  const [safePage, setSafePage] = useState(1);
+  const [safeError, setSafeError] = useState<string | null>(null);
+  const [safeLoading, setSafeLoading] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(
     () => typeof window !== 'undefined' && localStorage.getItem(PIN_STORAGE_KEY) === 'true'
   );
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
+  const [scalpPage, setScalpPage] = useState(1);
   const lastWarningStateRef = useRef<Map<string, string>>(new Map());
   const trackedPairsRef = useRef<Map<string, number>>(new Map());
+  const lastLiqRef = useRef<Map<string, number>>(new Map());
+  const lastSafeTelegramRef = useRef<string | null>(null);
+  const safeStateRef = useRef<
+    Map<
+      string,
+      {
+        status: 'candidate' | 'confirmed' | 'cooldown';
+        startedAt: number;
+        peakPrice: number;
+        cooldownUntil: number;
+      }
+    >
+  >(new Map());
 
   const formatter = useMemo(
     () =>
@@ -149,6 +231,8 @@ export default function HomePage() {
     },
     [nowTs]
   );
+
+  // Orderbook analysis removed.
 
   const buildWarningGuidance = useCallback(
     (coin: CoinSignal) => {
@@ -416,6 +500,245 @@ export default function HomePage() {
     }
   }, []);
 
+  const fetchSafeTokens = useCallback(async () => {
+    try {
+      setSafeLoading(true);
+      setSafeError(null);
+      const boostRes = await fetch('/api/dexscreener/boosts');
+      if (!boostRes.ok) {
+        throw new Error(`Gagal mengambil DexScreener boosts (${boostRes.status})`);
+      }
+      const boostData = (await boostRes.json()) as DexBoostToken[] | { tokens?: DexBoostToken[]; data?: DexBoostToken[] };
+      const boostList = Array.isArray(boostData)
+        ? boostData
+        : boostData.tokens ?? boostData.data ?? [];
+      const tokenAddresses = boostList
+        .filter((item) => !item.chainId || item.chainId.toLowerCase() === 'solana')
+        .map((item) => item.tokenAddress ?? item.address ?? item.token?.address ?? '')
+        .filter(Boolean)
+        .slice(0, 20);
+
+      if (tokenAddresses.length === 0) {
+        setSafeAlerts([]);
+        return;
+      }
+
+      const now = Date.now();
+
+      const pairResults = await Promise.allSettled(
+        tokenAddresses.map(async (address) => {
+          const res = await fetch(`/api/dexscreener/token-pairs/${address}`);
+          if (!res.ok) {
+            throw new Error(`Token pairs ${address} ${res.status}`);
+          }
+          const data = (await res.json()) as DexPair[] | DexResponse;
+          const pairs = Array.isArray(data) ? data : data.pairs ?? [];
+          return { address, pairs };
+        })
+      );
+
+      const candidates: SafeAlert[] = [];
+      const waiting: SafeAlert[] = [];
+      const safeList: SafeAlert[] = [];
+      pairResults.forEach((result) => {
+        if (result.status !== 'fulfilled') return;
+        const { pairs, address } = result.value;
+        const best = [...pairs].sort((a, b) => {
+          const volA = a.volume?.m5 ?? 0;
+          const volB = b.volume?.m5 ?? 0;
+          if (volB !== volA) return volB - volA;
+          const liqA = a.liquidity?.usd ?? 0;
+          const liqB = b.liquidity?.usd ?? 0;
+          return liqB - liqA;
+        })[0];
+
+        if (!best) return;
+        const liq = best.liquidity?.usd ?? 0;
+        const vol5 = best.volume?.m5 ?? 0;
+        const vol1 = best.volume?.h1 ?? 0;
+        const pch5 = best.priceChange?.m5 ?? 0;
+        const buys = best.txns?.m5?.buys ?? 0;
+        const sells = best.txns?.m5?.sells ?? 0;
+        const ratio = buys / Math.max(sells, 1);
+        const createdAt = best.pairCreatedAt ?? 0;
+        const ageMinutes = createdAt > 0 ? (now - createdAt) / (60 * 1000) : 0;
+        const priceUsd = Number(best.priceUsd ?? 0);
+
+        if (liq < 50_000) return;
+        if (vol5 < 10_000) return;
+        if (createdAt === 0 || ageMinutes < 60) return;
+        if (pch5 > 25) return;
+        if (ratio > 10) return;
+
+        const lastLiq = lastLiqRef.current.get(best.pairAddress) ?? liq;
+        if (liq < lastLiq * 0.9) {
+          lastLiqRef.current.set(best.pairAddress, liq);
+          return;
+        }
+        lastLiqRef.current.set(best.pairAddress, liq);
+
+        let safetyScore = 0;
+        if (liq >= 250_000) safetyScore += 40;
+        else if (liq >= 100_000) safetyScore += 30;
+        else if (liq >= 50_000) safetyScore += 20;
+
+        if (ratio >= 1.1 && ratio <= 3.5) safetyScore += 30;
+        else if ((ratio >= 1.0 && ratio < 1.1) || (ratio > 3.5 && ratio <= 5.0)) safetyScore += 15;
+
+        if (vol1 >= 500_000) safetyScore += 20;
+        else if (vol1 >= 200_000) safetyScore += 10;
+
+        if (ageMinutes >= 7 * 24 * 60) safetyScore += 10;
+        else if (ageMinutes >= 24 * 60) safetyScore += 5;
+
+        safetyScore = Math.max(0, Math.min(100, Math.round(safetyScore)));
+
+        let momentumScore = 0;
+        if (pch5 >= 1 && pch5 <= 6) momentumScore += 40;
+        if (vol5 >= 10_000) momentumScore += 30;
+        if (ratio >= 1.3) momentumScore += 30;
+        momentumScore = Math.max(0, Math.min(100, Math.round(momentumScore)));
+
+        const reasons = [
+          liq >= 50_000 ? 'liq_ok' : null,
+          ageMinutes >= 60 ? 'age_ok' : null,
+          ratio >= 1.1 && ratio <= 3.5 ? 'ratio_ok' : null,
+          vol5 >= 10_000 ? 'vol_ok' : null,
+          pch5 <= 25 ? 'pch_safe' : null,
+        ].filter(Boolean) as string[];
+
+        const alert: SafeAlert = {
+          symbol: best.baseToken?.symbol ?? 'UNKNOWN',
+          tokenAddress: address,
+          pairAddress: best.pairAddress,
+          dexId: best.dexId,
+          url: best.url,
+          safetyScore,
+          momentumScore,
+          priceUsd,
+          pch5,
+          vol5,
+          vol1,
+          liq,
+          ratio,
+          reasons,
+        };
+
+        safeList.push(alert);
+
+        if (safetyScore >= 75 && momentumScore >= 70) {
+          candidates.push(alert);
+        } else {
+          const progress = Math.min(
+            100,
+            Math.round(((Math.min(safetyScore / 75, 1) + Math.min(momentumScore / 70, 1)) / 2) * 100)
+          );
+          waiting.push({ ...alert, confirmProgress: progress });
+          const existing = safeStateRef.current.get(best.pairAddress);
+          if (existing?.status === 'candidate') {
+            safeStateRef.current.delete(best.pairAddress);
+          }
+        }
+      });
+
+      const confirmed: SafeAlert[] = [];
+      candidates.forEach((item) => {
+        const state = safeStateRef.current.get(item.pairAddress);
+        if (!state || state.status === 'cooldown') {
+          const cooldownActive = state?.cooldownUntil && now < state.cooldownUntil;
+          if (cooldownActive) return;
+          safeStateRef.current.set(item.pairAddress, {
+            status: 'candidate',
+            startedAt: now,
+            peakPrice: item.priceUsd,
+            cooldownUntil: state?.cooldownUntil ?? 0,
+          });
+          return;
+        }
+
+        if (state.status === 'candidate') {
+          const peakPrice = Math.max(state.peakPrice, item.priceUsd);
+          const elapsed = now - state.startedAt;
+          const drawdown = peakPrice > 0 ? ((peakPrice - item.priceUsd) / peakPrice) * 100 : 0;
+          safeStateRef.current.set(item.pairAddress, {
+            ...state,
+            peakPrice,
+          });
+
+          if (elapsed >= 3 * 60 * 1000 && elapsed <= 10 * 60 * 1000) {
+            if (item.safetyScore >= 75 && item.momentumScore >= 60 && drawdown <= 20) {
+              safeStateRef.current.set(item.pairAddress, {
+                status: 'cooldown',
+                startedAt: now,
+                peakPrice,
+                cooldownUntil: now + 15 * 60 * 1000,
+              });
+              confirmed.push(item);
+            }
+          }
+        }
+      });
+
+      const summaryLines: string[] = [];
+      if (confirmed.length > 0) {
+        summaryLines.push('BUY terkonfirmasi:');
+        confirmed.forEach((alert) => {
+          summaryLines.push(
+            `${alert.symbol} (${alert.dexId.toUpperCase()}) | Safety ${alert.safetyScore} | Mom ${alert.momentumScore} | $${alert.priceUsd.toFixed(
+              6
+            )} | pch5 ${alert.pch5.toFixed(2)}%`
+          );
+        });
+      }
+
+      if (safeList.length > 0) {
+        summaryLines.push('');
+        summaryLines.push('Koin aman (top safety):');
+        safeList.slice(0, 10).forEach((alert) => {
+          summaryLines.push(
+            `${alert.symbol} | Safety ${alert.safetyScore} | Liq $${alert.liq.toFixed(0)} | pch5 ${alert.pch5.toFixed(2)}%`
+          );
+        });
+      }
+
+      if (waiting.length > 0) {
+        summaryLines.push('');
+        summaryLines.push('Waiting menuju confirm:');
+        waiting.slice(0, 10).forEach((alert) => {
+          summaryLines.push(
+            `${alert.symbol} | Safety ${alert.safetyScore} | Mom ${alert.momentumScore} | ${alert.confirmProgress ?? 0}%`
+          );
+        });
+      }
+
+      const summaryMessage = summaryLines.join('\n').trim();
+      if (summaryMessage) {
+        const hash = summaryMessage;
+        if (lastSafeTelegramRef.current !== hash) {
+          lastSafeTelegramRef.current = hash;
+          await fetch('/api/telegram/notify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: summaryMessage }),
+          });
+        }
+      }
+
+      setSafeAlerts(confirmed);
+      setSafeWaiting(
+        waiting
+          .sort((a, b) => b.safetyScore - a.safetyScore || b.momentumScore - a.momentumScore)
+          .slice(0, 30)
+      );
+      setSafeAll(safeList.sort((a, b) => b.safetyScore - a.safetyScore || b.liq - a.liq));
+    } catch (err: unknown) {
+      console.error(err);
+      setSafeError(err instanceof Error ? err.message : 'Gagal mengambil data DexScreener');
+    } finally {
+      setSafeLoading(false);
+    }
+  }, []);
+
   const handlePinSubmit = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -436,20 +759,26 @@ export default function HomePage() {
 
     fetchData();
     fetchNews();
+    fetchSafeTokens();
     const interval = setInterval(() => {
       fetchData();
       setNowTs(Date.now());
-    }, 15_000);
+    }, 10 * 60 * 1000);
 
     const newsInterval = setInterval(() => {
       fetchNews();
-    }, 5 * 60 * 1000);
+    }, 10 * 60 * 1000);
+
+    const safeInterval = setInterval(() => {
+      fetchSafeTokens();
+    }, 10 * 60 * 1000);
 
     return () => {
       clearInterval(interval);
       clearInterval(newsInterval);
+      clearInterval(safeInterval);
     };
-  }, [fetchData, fetchNews, isAuthorized]);
+  }, [fetchData, fetchNews, fetchSafeTokens, isAuthorized]);
 
   useEffect(() => {
     if (!isAuthorized) return undefined;
@@ -593,11 +922,12 @@ export default function HomePage() {
         const entryGapPct = Number.isFinite(coin.last) && coin.last > 0 ? ((coin.entry - coin.last) / coin.last) * 100 : 0;
         const heatPct = Math.max(0, Math.min(100, coin.posInRange * 100));
         const momentumPct = Math.max(0, coin.moveFromLowPct);
+        const isLate = coin.pricePhase === 'sudah_telanjur_naik' || entryGapPct < -4;
         const volumeScore = Math.max(18, Math.min(40, Math.log10(Math.max(coin.volIdr, 1)) * 12 - 36));
         const rrScore = Math.min(28, Math.max(0, rrLive * 9));
         const setupScore = Math.min(18, Math.max(0, 18 - Math.abs(heatPct - 58) * 0.25));
         const momentumScore = Math.min(24, Math.max(0, momentumPct * 0.7));
-        const score = Math.round(volumeScore + rrScore + setupScore + momentumScore);
+        const score = Math.round(volumeScore + rrScore + setupScore + momentumScore - (isLate ? 18 : 0));
 
         const coilPct = Math.max(0, Math.min(25, ((coin.high - coin.low) / Math.max(coin.low, 1)) * 100));
         const sidewayLabel = coilPct <= 6 ? 'Sideway ketat' : coilPct <= 12 ? 'Sideway lebar' : 'Range lebar';
@@ -607,6 +937,24 @@ export default function HomePage() {
             : coilPct <= 12
               ? 'Sideway cukup lama, butuh trigger konfirmasi'
               : 'Range lebar, momentum sering bolak-balik';
+
+        const patternLabel =
+          coilPct <= 6 && heatPct >= 40 && heatPct <= 65
+            ? 'Base ketat (akumulasi)'
+            : heatPct >= 70
+              ? 'Breakout atas (lanjutan)'
+              : heatPct >= 45
+                ? 'Naik bertahap (stair up)'
+                : 'Re-accumulation (balik base)';
+
+        const patternNote =
+          patternLabel === 'Base ketat (akumulasi)'
+            ? 'Pola mirip fase akumulasi sebelum pump, tunggu dorongan volume.'
+            : patternLabel === 'Breakout atas (lanjutan)'
+              ? 'Pola lanjutan setelah breakout, rawan telanjur bila entry terlambat.'
+              : patternLabel === 'Naik bertahap (stair up)'
+                ? 'Pola naik bertahap; entry aman jika masih dekat base.'
+                : 'Pola balik base; cocok untuk entry saat harga turun mendekati dasar.';
 
         const priorSpike = Math.max(momentumPct - 5, 0);
         const historyNote = priorSpike >= 18
@@ -635,12 +983,11 @@ export default function HomePage() {
               ? 'Buffer pas-pasan'
               : 'Buffer tipis, rawan longsor';
 
-        const entryNote =
-          entryGapPct < -3
-            ? 'Harga lari jauh di atas entry, tunggu retrace'
-            : entryGapPct < 1
-              ? 'Sudah di dekat/paska entry'
-              : 'Masih diskon vs entry, boleh cicil';
+        const entryNote = isLate
+          ? `Telanjur naik, entry tunggu turun dekat ${formatPrice(coin.entry)}`
+          : entryGapPct < 1
+            ? 'Sudah di dekat/paska entry'
+            : 'Masih diskon vs entry, boleh cicil';
 
         let bias: 'bull' | 'neutral' | 'risk' = 'bull';
         if (rrLive < 1.4 || upsidePct < 6) {
@@ -649,14 +996,15 @@ export default function HomePage() {
           bias = 'neutral';
         }
 
-        const actionLine =
-          bias === 'bull'
+        const actionLine = isLate
+          ? `Sudah telanjur naik. Entry aman saat harga turun mendekati ${formatPrice(coin.entry)} sebelum lanjut.`
+          : bias === 'bull'
             ? `Peluang ${upsidePct.toFixed(1)}% ke TP dengan RR live ${rrLive.toFixed(2)}; entry ${
                 entryGapPct > 1 ? 'masih diskon' : 'sudah jalan'
               } ${entryGapPct.toFixed(1)}%.`
             : bias === 'neutral'
-            ? `Setup cukup, tapi butuh konfirmasi volume tambahan. Upside ${upsidePct.toFixed(1)}%, RR ${rrLive.toFixed(2)}.`
-            : `Risiko > reward (${rrLive.toFixed(2)}). Lebih aman tunggu re-entry dekat ${formatPrice(coin.entry)}.`;
+              ? `Setup cukup, tapi butuh konfirmasi volume tambahan. Upside ${upsidePct.toFixed(1)}%, RR ${rrLive.toFixed(2)}.`
+              : `Risiko > reward (${rrLive.toFixed(2)}). Lebih aman tunggu re-entry dekat ${formatPrice(coin.entry)}.`;
 
         const convictionLabel =
           score >= 90 ? 'A' : score >= 75 ? 'B+' : score >= 65 ? 'B' : score >= 55 ? 'C+' : 'C';
@@ -687,14 +1035,246 @@ export default function HomePage() {
           riskNote,
           sidewayLabel,
           sidewayNote,
+          patternLabel,
+          patternNote,
           structureNote,
           btcDrag,
           historyNote,
           confidencePct,
+          isLate,
         };
       })
       .sort((a, b) => b.score - a.score);
   }, [btcContext.bias, formatPrice, pumpList]);
+
+  const scalpQuickList = useMemo(() => {
+    const candidates = pumpMathList
+      .filter((item) => {
+        const edge = item.upsidePct - item.downsidePct;
+        return (
+          item.coin.last < 100 &&
+          item.confidencePct >= 78 &&
+          item.upsidePct >= 8 &&
+          edge >= 4 &&
+          item.rrLive >= 1.6
+        );
+      })
+      .map((item) => {
+        const tpTargets = computeTpTargets(item.coin);
+        const tp1 = tpTargets[0];
+        const tp2 = tpTargets[1];
+        const edgePct = item.upsidePct - item.downsidePct;
+        const tpChance = Math.min(99, Math.max(60, Math.round(item.confidencePct * 0.6 + edgePct * 2 + item.rrLive * 6)));
+        const priorityScore = Math.round(tpChance * 0.55 + item.confidencePct * 0.3 + edgePct * 1.8 + item.rrLive * 7);
+
+        const entryNote =
+          item.entryGapPct < -3
+            ? 'Sudah lari, tunggu retrace tipis'
+            : item.entryGapPct <= 1
+              ? 'Gap sempit, boleh bid tipis'
+              : 'Masih diskon vs entry, curi start dengan lot terbatas';
+
+        const reasonShort = `${item.structureNote} • Edge ${edgePct.toFixed(1)}% • ${entryNote}`;
+
+        return {
+          pair: item.coin.pair,
+          price: item.coin.last,
+          confidence: item.confidencePct,
+          tpChance,
+          rrLive: item.rrLive,
+          upsidePct: item.upsidePct,
+          edgePct,
+          priorityScore,
+          liquidity: item.liquidityLabel,
+          entryGapPct: item.entryGapPct,
+          entryNote,
+          reasonShort,
+          tp1,
+          tp2,
+          action: item.actionLine,
+          supports: [item.structureNote, item.btcDrag, `Edge live ${edgePct.toFixed(1)}%`],
+        };
+      });
+
+    return candidates
+      .sort((a, b) =>
+        b.priorityScore - a.priorityScore || b.confidence - a.confidence || b.tpChance - a.tpChance || b.edgePct - a.edgePct
+      );
+  }, [computeTpTargets, pumpMathList]);
+
+  const scalpPageSize = 8;
+  const totalScalpPages = Math.max(1, Math.ceil(scalpQuickList.length / scalpPageSize));
+
+  useEffect(() => {
+    setScalpPage((prev) => Math.min(Math.max(1, prev), totalScalpPages));
+  }, [totalScalpPages]);
+
+  const displayedScalp = useMemo(
+    () => scalpQuickList.slice((scalpPage - 1) * scalpPageSize, scalpPage * scalpPageSize),
+    [scalpPage, scalpPageSize, scalpQuickList]
+  );
+
+  const safePageSize = 10;
+  const totalSafePages = Math.max(1, Math.ceil(safeAll.length / safePageSize));
+
+  useEffect(() => {
+    setSafePage((prev) => Math.min(Math.max(1, prev), totalSafePages));
+  }, [totalSafePages]);
+
+  const displayedSafeAll = useMemo(
+    () => safeAll.slice((safePage - 1) * safePageSize, safePage * safePageSize),
+    [safeAll, safePage, safePageSize]
+  );
+
+  const potentialList = useMemo(
+    () =>
+      [...safeAll]
+        .sort((a, b) => b.momentumScore - a.momentumScore || b.safetyScore - a.safetyScore || b.vol5 - a.vol5)
+        .slice(0, 200),
+    [safeAll]
+  );
+  const [potentialPage, setPotentialPage] = useState(1);
+  const potentialPageSize = 12;
+  const totalPotentialPages = Math.max(1, Math.ceil(potentialList.length / potentialPageSize));
+
+  useEffect(() => {
+    setPotentialPage((prev) => Math.min(Math.max(1, prev), totalPotentialPages));
+  }, [totalPotentialPages]);
+
+  const displayedPotential = useMemo(
+    () => potentialList.slice((potentialPage - 1) * potentialPageSize, potentialPage * potentialPageSize),
+    [potentialList, potentialPage, potentialPageSize]
+  );
+
+
+  const renderPumpMathCard = useCallback(
+    (item: (typeof pumpMathList)[number]) => {
+      const edgePct = item.upsidePct - item.downsidePct;
+      const tpTargets = computeTpTargets(item.coin);
+      const buyLine =
+        item.rrLive >= 2
+          ? `Layak dibeli: upside ${item.upsidePct.toFixed(1)}% & RR ${item.rrLive.toFixed(2)}x (RR sehat).`
+          : `Masih layak: upside ${item.upsidePct.toFixed(1)}% & RR ${item.rrLive.toFixed(2)}x (cukup).`;
+
+      const timingLine = item.isLate
+        ? `Tahan entry dulu: tunggu harga turun ke sekitar ${formatPrice(item.coin.entry)}.`
+        : item.entryGapPct <= 1
+          ? 'Beli dulu kecil: harga dekat entry, momentum jalan.'
+          : 'Boleh curi start: harga masih di bawah entry/diskon.';
+
+      const paceLine =
+        item.heatPct >= 80
+          ? 'Cicil kecil: heat tinggi, hindari FOMO.'
+          : item.liquidityLabel === 'Likuid tipis'
+            ? 'Cicil: likuiditas tipis, jangan all-in.'
+            : 'Bisa cicil bertahap: likuiditas cukup dan heat aman.';
+
+      const cautionLine = `Hati-hati: ${item.riskNote.toLowerCase()}.`;
+      const tpChance = Math.min(99, Math.max(35, item.confidencePct));
+      const tpLine = `Prediksi tembus TP: ${tpChance}% (gabungan score & bias BTC).`;
+      const supportLine = `Pendukung: ${item.structureNote}; ${item.btcDrag}; Upside ${item.upsidePct.toFixed(
+        1
+      )}% vs buffer ${item.downsidePct.toFixed(1)}%.`;
+      const patternLine = `Pola chart: ${item.patternLabel}. ${item.patternNote}`;
+
+      return (
+        <div key={item.coin.pair} className={`pump-math-card bias-${item.bias}`}>
+          <div className="pump-math-body">
+            <div className="pump-math-head">
+              <div className="pump-math-title">
+                <div className="pump-math-pair">
+                  {item.coin.pair.toUpperCase()}{' '}
+                  <span className="pump-math-price">({formatPrice(item.coin.last)})</span>
+                </div>
+                <div className="pump-math-sub">
+                  Likuiditas {item.liquidityLabel} • Volume {formatter.format(item.coin.volIdr)} IDR
+                </div>
+              </div>
+              <div className="confidence-box">
+                <div className="confidence-value">{item.confidencePct}%</div>
+                <div className="confidence-label">Yakin pump</div>
+                <span className="confidence-grade">{item.convictionLabel}</span>
+              </div>
+            </div>
+
+            <div className="pump-math-quick">
+              <div className="quick-item">
+                <div className="quick-label">Upside → TP</div>
+                <div className="quick-value">{item.upsidePct.toFixed(1)}%</div>
+                <div className="quick-sub">RR live {item.rrLive.toFixed(2)}x</div>
+              </div>
+              <div className="quick-item">
+                <div className="quick-label">Momentum 24j</div>
+                <div className="quick-value">{item.momentumPct.toFixed(1)}%</div>
+                <div className="quick-sub">Heat range {item.heatPct.toFixed(1)}%</div>
+              </div>
+              <div className="quick-item">
+                <div className="quick-label">Buffer SL</div>
+                <div className="quick-value">{item.downsidePct.toFixed(1)}%</div>
+                <div className="quick-sub">{item.riskNote}</div>
+              </div>
+              <div className="quick-item">
+                <div className="quick-label">Edge live</div>
+                <div className="quick-value">{edgePct.toFixed(1)}%</div>
+                <div className="quick-sub">Upside - downside</div>
+              </div>
+            </div>
+
+            <div className="pump-math-forecast">
+              <div className="forecast-title">Perkiraan tembus TP</div>
+              <div className="forecast-value">{tpChance}%</div>
+              <div className="forecast-sub">{tpLine}</div>
+              <ul className="forecast-tp-list">
+                {tpTargets.map((tp, idx) => (
+                  <li key={`${item.coin.pair}-tp-${idx}`}>
+                    TP {idx + 1}: {formatPrice(tp.price)} ({tp.pct.toFixed(1)}%)
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="pump-math-support">
+              <div className="support-title">Pendukung kuat</div>
+              <div className="support-chips">
+                {[
+                  item.structureNote,
+                  item.btcDrag,
+                  `Pola: ${item.patternLabel}`,
+                  `Upside ${item.upsidePct.toFixed(1)}% vs buffer ${item.downsidePct.toFixed(1)}%`,
+                ].map((note, idx) => (
+                  <span key={`${item.coin.pair}-support-${idx}`} className="support-chip">
+                    {note}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="pump-math-action">
+              {item.actionLine}
+              <div className="pump-math-hint">
+                Entry gap {item.entryGapPct.toFixed(1)}% • {item.historyNote}
+              </div>
+              <div className="pump-math-verdict">
+                <div className="verdict-line">{tpLine}</div>
+                <div className="verdict-line">{supportLine}</div>
+                <div className="verdict-line">{patternLine}</div>
+                <div className="verdict-line">{buyLine}</div>
+                <div className="verdict-line">{timingLine}</div>
+                <div className="verdict-line">{paceLine}</div>
+                <div className="verdict-line verdict-caution">{cautionLine}</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      );
+    },
+    [
+      computeTpTargets,
+      formatPrice,
+      formatter,
+    ]
+  );
 
   const topPickInsight = useMemo(() => {
     if (topPicks.length === 0) {
@@ -1380,8 +1960,7 @@ export default function HomePage() {
               <div>
                 <h3>Lab Hitung Mau Pump</h3>
                 <p className="muted">
-                  Kalkulasi langsung RR live, jarak TP/SL, gap ke entry, suhu range, historis sideway, efek BTC, dan grafik mini
-                  upside/downside supaya eksekusi makin yakin.
+                  Bahasa singkat: seberapa yakin % mau pump, kenapa layak dibeli, kapan boleh beli dulu/cicil, dan poin hati-hati.
                 </p>
               </div>
               <span className="badge badge-strong">Angka real-time</span>
@@ -1391,111 +1970,275 @@ export default function HomePage() {
               <div className="empty-state small">Menunggu sinyal mau pump untuk dihitung.</div>
             ) : (
               <div className="pump-math-grid">
-                {pumpMathList.slice(0, 4).map((item) => (
-                  <div key={item.coin.pair} className={`pump-math-card bias-${item.bias}`}>
-                    <div className="pump-math-head">
-                      <div>
-                        <div className="pump-math-pair">{item.coin.pair.toUpperCase()}</div>
-                        <div className="pump-math-sub">Volume {formatter.format(item.coin.volIdr)} IDR</div>
-                      </div>
-                      <div className="pump-math-score">Score {item.score}</div>
-                    </div>
+                {pumpMathList.slice(0, 4).map((item) => renderPumpMathCard(item))}
+              </div>
+            )}
+          </section>
 
-                    <div className="pump-math-metrics">
-                      <div>
-                        <div className="metric-label">Upside → TP</div>
-                        <div className="metric-value">{item.upsidePct.toFixed(1)}%</div>
-                        <div className="metric-sub">Jarak dari harga last ke TP</div>
-                      </div>
-                      <div>
-                        <div className="metric-label">Cushion → SL</div>
-                        <div className="metric-value">{item.downsidePct.toFixed(1)}%</div>
-                        <div className="metric-sub">Turun sebelum kena SL</div>
-                      </div>
-                      <div>
-                        <div className="metric-label">RR live</div>
-                        <div className="metric-value">{item.rrLive.toFixed(2)}x</div>
-                        <div className="metric-sub">Banding upside vs downside saat ini</div>
-                      </div>
-                      <div>
-                        <div className="metric-label">Gap ke Entry</div>
-                        <div className="metric-value">{item.entryGapPct.toFixed(1)}%</div>
-                        <div className="metric-sub">Minus = masih diskon</div>
-                      </div>
-                      <div>
-                        <div className="metric-label">Heat 24j</div>
-                        <div className="metric-value">{item.heatPct.toFixed(1)}%</div>
-                        <div className="metric-sub">Posisi di rentang low-high</div>
-                      </div>
-                      <div>
-                        <div className="metric-label">Momentum</div>
-                        <div className="metric-value">{item.momentumPct.toFixed(1)}%</div>
-                        <div className="metric-sub">Kenaikan dari low 24j</div>
-                      </div>
-                    </div>
+          <section id="safe-detection" className="section-card accent-safe">
+            <div className="section-head">
+              <div>
+                <h3>INTI DETEKSI KOIN AMAN (SOLANA)</h3>
+                <p className="muted">
+                  Filter anti-noise untuk token Solana dari DexScreener. Hanya alert jika aman + sedang naik.
+                </p>
+              </div>
+              <span className="badge badge-neutral">Safety + Momentum</span>
+            </div>
 
-                    <div className="pump-math-diagnosis">
-                      <div>
-                        <div className="diag-label">Conviction</div>
-                        <div className="diag-value">{item.convictionLabel}</div>
-                        <div className="diag-sub">{item.convictionNote}</div>
-                      </div>
-                      <div>
-                        <div className="diag-label">Likuiditas</div>
-                        <div className="diag-value">{item.liquidityLabel}</div>
-                        <div className="diag-sub">Volume {formatter.format(item.coin.volIdr)} IDR</div>
-                      </div>
-                      <div>
-                        <div className="diag-label">Penjagaan</div>
-                        <div className="diag-value">{item.riskNote}</div>
-                        <div className="diag-sub">Pastikan SL siap dan hindari FOMO</div>
-                      </div>
-                    </div>
-
-                    <div className="pump-math-history">
-                      <div className="history-block">
-                        <div className="history-label">Sideway & histori</div>
-                        <div className="history-value">{item.sidewayLabel}</div>
-                        <div className="history-sub">{item.sidewayNote}</div>
-                      </div>
-                      <div className="history-block">
-                        <div className="history-label">Break & garis</div>
-                        <div className="history-value">{item.structureNote}</div>
-                        <div className="history-sub">{item.historyNote}</div>
-                      </div>
-                      <div className="history-block">
-                        <div className="history-label">Efek BTC</div>
-                        <div className="history-value">{item.btcDrag}</div>
-                        <div className="history-sub">Keyakinan {item.confidencePct}%</div>
-                      </div>
-                    </div>
-
-                    <div className="pump-math-spark">
-                      <div className="spark-label">Grafik mini: upside vs downside live</div>
-                      <div className="spark-track">
-                        <div className="spark-bar">
-                          <span
-                            className="spark-up"
-                            style={{ width: `${Math.min(100, Math.max(0, item.upsidePct))}%` }}
-                          />
-                        </div>
-                        <div className="spark-bar">
-                          <span
-                            className="spark-down"
-                            style={{ width: `${Math.min(100, Math.max(0, item.downsidePct * 2))}%` }}
-                          />
-                        </div>
-                      </div>
-                      <div className="spark-meta">
-                        Upside {item.upsidePct.toFixed(1)}% • Downside {item.downsidePct.toFixed(1)}% • Heat {item.heatPct.toFixed(
-                          1
-                        )}% • Momentum {item.momentumPct.toFixed(1)}%
-                      </div>
-                    </div>
-
-                    <div className="pump-math-action">{item.actionLine}</div>
+            {safeLoading ? (
+              <div className="empty-state small">Memuat kandidat aman...</div>
+            ) : safeError ? (
+              <div className="empty-state small">{safeError}</div>
+            ) : safeAlerts.length === 0 && safeWaiting.length === 0 ? (
+              <div className="empty-state small">Belum ada kandidat “naik + aman”.</div>
+            ) : (
+              <>
+                {safeAlerts.length > 0 && (
+                  <div className="safe-table-wrap">
+                    <table className="safe-table">
+                      <thead>
+                        <tr>
+                          <th>Token (Confirmed)</th>
+                          <th>Skor</th>
+                          <th>Harga</th>
+                          <th>Performa 5m</th>
+                          <th>Volume/Liq</th>
+                          <th>Alasan lolos</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {safeAlerts.map((alert) => (
+                          <tr key={alert.pairAddress}>
+                            <td>
+                              <div className="safe-token">{alert.symbol}</div>
+                              <div className="safe-sub">{alert.dexId.toUpperCase()} • {alert.pairAddress.slice(0, 6)}...</div>
+                              <a className="safe-link" href={alert.url} target="_blank" rel="noreferrer">
+                                Buka DexScreener
+                              </a>
+                            </td>
+                            <td>
+                              <div className="safe-score">Safety {alert.safetyScore}</div>
+                              <div className="safe-sub">Momentum {alert.momentumScore}</div>
+                            </td>
+                            <td>
+                              <div className="safe-score">${alert.priceUsd.toFixed(6)}</div>
+                              <div className="safe-sub">Ratio {alert.ratio.toFixed(2)}</div>
+                            </td>
+                            <td>
+                              <div className="safe-score">{alert.pch5.toFixed(2)}%</div>
+                              <div className="safe-sub">Vol 5m {alert.vol5.toFixed(0)}</div>
+                            </td>
+                            <td>
+                              <div className="safe-score">${alert.liq.toFixed(0)}</div>
+                              <div className="safe-sub">Vol 1h {alert.vol1.toFixed(0)}</div>
+                            </td>
+                            <td>
+                              <div className="safe-reason">{alert.reasons.join(', ')}</div>
+                              <div className="safe-sub">{alert.tokenAddress.slice(0, 10)}...</div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                ))}
+                )}
+
+                {safeWaiting.length > 0 && (
+                  <div className="safe-waiting">
+                    <div className="safe-waiting-title">Waiting list (menuju confirm)</div>
+                    <div className="safe-waiting-grid">
+                      {safeWaiting.map((item) => (
+                        <div key={item.pairAddress} className="safe-waiting-card">
+                          <div className="safe-waiting-head">
+                            <div className="safe-token">{item.symbol}</div>
+                            <div className="safe-score">Safety {item.safetyScore}</div>
+                          </div>
+                          <div className="safe-waiting-progress">
+                            Menuju confirm {item.confirmProgress ?? 0}%
+                          </div>
+                          <div className="safe-sub">Momentum {item.momentumScore} • {item.pch5.toFixed(2)}%</div>
+                          <div className="safe-sub">Liq ${item.liq.toFixed(0)} • Ratio {item.ratio.toFixed(2)}</div>
+                          <div className="safe-reason">{item.reasons.join(', ')}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+
+          <section id="safe-all" className="section-card accent-safe">
+            <div className="section-head">
+              <div>
+                <h3>Daftar Semua Koin Aman (Safety)</h3>
+                <p className="muted">
+                  Daftar token Solana yang lolos filter keamanan dasar. Status “BUY” bila sudah tembus aman + momentum.
+                </p>
+              </div>
+              <span className="badge badge-neutral">Safety (lolos filter)</span>
+            </div>
+
+            {safeLoading ? (
+              <div className="empty-state small">Memuat daftar aman...</div>
+            ) : safeError ? (
+              <div className="empty-state small">{safeError}</div>
+            ) : displayedSafeAll.length === 0 ? (
+              <div className="empty-state small">Belum ada koin aman yang terdeteksi.</div>
+            ) : (
+              <div className="safe-table-wrap">
+                <table className="safe-table">
+                  <thead>
+                    <tr>
+                      <th>Token</th>
+                      <th>Safety</th>
+                      <th>Harga</th>
+                      <th>Performa 5m</th>
+                      <th>Liquidity</th>
+                      <th>Info</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayedSafeAll.map((alert) => (
+                      <tr key={`safe-${alert.pairAddress}`}>
+                        <td>
+                          <div className="safe-token">{alert.symbol}</div>
+                          <div className="safe-sub">{alert.dexId.toUpperCase()} • {alert.pairAddress.slice(0, 6)}...</div>
+                        </td>
+                        <td>
+                          <div className="safe-score">{alert.safetyScore}</div>
+                          <div className="safe-sub">Ratio {alert.ratio.toFixed(2)}</div>
+                        </td>
+                        <td>
+                          <div className="safe-score">${alert.priceUsd.toFixed(6)}</div>
+                          <div className="safe-sub">Vol 1h {alert.vol1.toFixed(0)}</div>
+                        </td>
+                        <td>
+                          <div className="safe-score">{alert.pch5.toFixed(2)}%</div>
+                          <div className="safe-sub">Vol 5m {alert.vol5.toFixed(0)}</div>
+                        </td>
+                        <td>
+                          <div className="safe-score">${alert.liq.toFixed(0)}</div>
+                          <div className="safe-sub">{alert.tokenAddress.slice(0, 10)}...</div>
+                        </td>
+                        <td>
+                          <div className="safe-reason">{alert.reasons.join(', ')}</div>
+                          <a className="safe-link" href={alert.url} target="_blank" rel="noreferrer">
+                            Buka DexScreener
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <div className="safe-pagination">
+                  <button
+                    className="safe-page-btn"
+                    onClick={() => setSafePage((p) => Math.max(1, p - 1))}
+                    disabled={safePage === 1}
+                  >
+                    &larr; Sebelumnya
+                  </button>
+                  <div className="safe-page-indicator">
+                    Halaman {safePage} / {totalSafePages}
+                  </div>
+                  <button
+                    className="safe-page-btn"
+                    onClick={() => setSafePage((p) => Math.min(totalSafePages, p + 1))}
+                    disabled={safePage === totalSafePages}
+                  >
+                    Selanjutnya &rarr;
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section id="safe-potential" className="section-card accent-safe">
+            <div className="section-head">
+              <div>
+                <h3>Daftar Koin Potensi Bagus (DEX)</h3>
+                <p className="muted">
+                  Semua kandidat DEX yang lolos filter keamanan, diurutkan berdasarkan momentum &amp; safety agar mudah dipantau.
+                </p>
+              </div>
+              <span className="badge badge-neutral">Top momentum</span>
+            </div>
+
+            {safeLoading ? (
+              <div className="empty-state small">Memuat daftar potensi...</div>
+            ) : safeError ? (
+              <div className="empty-state small">{safeError}</div>
+            ) : displayedPotential.length === 0 ? (
+              <div className="empty-state small">Belum ada kandidat potensial yang terdeteksi.</div>
+            ) : (
+              <div className="safe-table-wrap">
+                <table className="safe-table">
+                  <thead>
+                    <tr>
+                      <th>Token</th>
+                      <th>Momentum</th>
+                      <th>Safety</th>
+                      <th>Harga</th>
+                      <th>Performa 5m</th>
+                      <th>Liquidity</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayedPotential.map((alert) => (
+                      <tr key={`potential-${alert.pairAddress}`}>
+                        <td>
+                          <div className="safe-token">{alert.symbol}</div>
+                          <div className="safe-sub">{alert.dexId.toUpperCase()} • {alert.pairAddress.slice(0, 6)}...</div>
+                        </td>
+                        <td>
+                          <div className="safe-score">{alert.momentumScore}</div>
+                          <div className="safe-sub">Ratio {alert.ratio.toFixed(2)}</div>
+                        </td>
+                        <td>
+                          <div className="safe-score">{alert.safetyScore}</div>
+                          <div className="safe-sub">Vol 1h {alert.vol1.toFixed(0)}</div>
+                        </td>
+                        <td>
+                          <div className="safe-score">${alert.priceUsd.toFixed(6)}</div>
+                          <div className="safe-sub">Vol 5m {alert.vol5.toFixed(0)}</div>
+                        </td>
+                        <td>
+                          <div className="safe-score">{alert.pch5.toFixed(2)}%</div>
+                          <div className="safe-sub">{alert.reasons.join(', ')}</div>
+                        </td>
+                        <td>
+                          <div className="safe-score">${alert.liq.toFixed(0)}</div>
+                          <a className="safe-link" href={alert.url} target="_blank" rel="noreferrer">
+                            Buka DexScreener
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <div className="safe-pagination">
+                  <button
+                    className="safe-page-btn"
+                    onClick={() => setPotentialPage((p) => Math.max(1, p - 1))}
+                    disabled={potentialPage === 1}
+                  >
+                    &larr; Sebelumnya
+                  </button>
+                  <div className="safe-page-indicator">
+                    Halaman {potentialPage} / {totalPotentialPages}
+                  </div>
+                  <button
+                    className="safe-page-btn"
+                    onClick={() => setPotentialPage((p) => Math.min(totalPotentialPages, p + 1))}
+                    disabled={potentialPage === totalPotentialPages}
+                  >
+                    Selanjutnya &rarr;
+                  </button>
+                </div>
               </div>
             )}
           </section>
@@ -1704,6 +2447,87 @@ export default function HomePage() {
               </div>
             )}
           </section>
+
+          <section id="quick-scalp" className="section-card accent-scalp">
+            <div className="section-head">
+              <div>
+                <h3>SCALP COIN</h3>
+                <p className="muted">
+                  Tabel live koin murah (&lt; Rp100) ber-confidence tinggi, diurut otomatis berdasarkan skor akurat; gunakan
+                  pagination untuk jelajah banyak kandidat.
+                </p>
+              </div>
+              <span className="badge badge-neutral">Filter harga &lt; 100</span>
+            </div>
+
+            {scalpQuickList.length === 0 ? (
+              <div className="empty-state small">Belum ada koin murah yang valid untuk scalp cepat.</div>
+            ) : (
+              <div className="scalp-table-wrap">
+                <table className="scalp-table">
+                  <thead>
+                    <tr>
+                      <th>Prioritas</th>
+                      <th>Pair &amp; harga</th>
+                      <th>Skor</th>
+                      <th>Tembus TP</th>
+                      <th>Alasan singkat</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayedScalp.map((item, idx) => {
+                      const rank = (scalpPage - 1) * scalpPageSize + idx + 1;
+                      return (
+                        <tr key={item.pair}>
+                          <td>
+                            <div className="scalp-rank">#{rank}</div>
+                            <div className="scalp-rank-sub">Skor prioritas {item.priorityScore}</div>
+                          </td>
+                          <td>
+                            <div className="scalp-pair">{item.pair.toUpperCase()}</div>
+                            <div className="scalp-sub">Harga {formatPrice(item.price)} • Likuiditas {item.liquidity}</div>
+                          </td>
+                          <td>
+                            <div className="scalp-score">{item.confidence}% benar</div>
+                            <div className="scalp-sub">RR {item.rrLive.toFixed(2)}x • Upside {item.upsidePct.toFixed(1)}%</div>
+                          </td>
+                          <td>
+                            <div className="scalp-score">{item.tpChance}%</div>
+                            <div className="scalp-sub">TP1 {formatPrice(item.tp1.price)} ({item.tp1.pct.toFixed(1)}%) • TP2 {formatPrice(item.tp2.price)} ({item.tp2.pct.toFixed(1)}%)</div>
+                          </td>
+                          <td>
+                            <div className="scalp-reason">{item.reasonShort}</div>
+                            <div className="scalp-sub">{item.entryNote}</div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                <div className="scalp-pagination">
+                  <button
+                    className="scalp-page-btn"
+                    onClick={() => setScalpPage((p) => Math.max(1, p - 1))}
+                    disabled={scalpPage === 1}
+                  >
+                    &larr; Sebelumnya
+                  </button>
+                  <div className="scalp-page-indicator">
+                    Halaman {scalpPage} / {totalScalpPages}
+                  </div>
+                  <button
+                    className="scalp-page-btn"
+                    onClick={() => setScalpPage((p) => Math.min(totalScalpPages, p + 1))}
+                    disabled={scalpPage === totalScalpPages}
+                  >
+                    Selanjutnya &rarr;
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+
           </div>
         </div>
       </div>
