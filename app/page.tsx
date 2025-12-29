@@ -1126,6 +1126,26 @@ export default function HomePage() {
     [safeAll, safePage, safePageSize]
   );
 
+  const potentialList = useMemo(
+    () =>
+      [...safeAll]
+        .sort((a, b) => b.momentumScore - a.momentumScore || b.safetyScore - a.safetyScore || b.vol5 - a.vol5)
+        .slice(0, 200),
+    [safeAll]
+  );
+  const [potentialPage, setPotentialPage] = useState(1);
+  const potentialPageSize = 12;
+  const totalPotentialPages = Math.max(1, Math.ceil(potentialList.length / potentialPageSize));
+
+  useEffect(() => {
+    setPotentialPage((prev) => Math.min(Math.max(1, prev), totalPotentialPages));
+  }, [totalPotentialPages]);
+
+  const displayedPotential = useMemo(
+    () => potentialList.slice((potentialPage - 1) * potentialPageSize, potentialPage * potentialPageSize),
+    [potentialList, potentialPage, potentialPageSize]
+  );
+
 
   const renderPumpMathCard = useCallback(
     (item: (typeof pumpMathList)[number]) => {
@@ -2128,6 +2148,93 @@ export default function HomePage() {
                     className="safe-page-btn"
                     onClick={() => setSafePage((p) => Math.min(totalSafePages, p + 1))}
                     disabled={safePage === totalSafePages}
+                  >
+                    Selanjutnya &rarr;
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section id="safe-potential" className="section-card accent-safe">
+            <div className="section-head">
+              <div>
+                <h3>Daftar Koin Potensi Bagus (DEX)</h3>
+                <p className="muted">
+                  Semua kandidat DEX yang lolos filter keamanan, diurutkan berdasarkan momentum &amp; safety agar mudah dipantau.
+                </p>
+              </div>
+              <span className="badge badge-neutral">Top momentum</span>
+            </div>
+
+            {safeLoading ? (
+              <div className="empty-state small">Memuat daftar potensi...</div>
+            ) : safeError ? (
+              <div className="empty-state small">{safeError}</div>
+            ) : displayedPotential.length === 0 ? (
+              <div className="empty-state small">Belum ada kandidat potensial yang terdeteksi.</div>
+            ) : (
+              <div className="safe-table-wrap">
+                <table className="safe-table">
+                  <thead>
+                    <tr>
+                      <th>Token</th>
+                      <th>Momentum</th>
+                      <th>Safety</th>
+                      <th>Harga</th>
+                      <th>Performa 5m</th>
+                      <th>Liquidity</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayedPotential.map((alert) => (
+                      <tr key={`potential-${alert.pairAddress}`}>
+                        <td>
+                          <div className="safe-token">{alert.symbol}</div>
+                          <div className="safe-sub">{alert.dexId.toUpperCase()} • {alert.pairAddress.slice(0, 6)}...</div>
+                        </td>
+                        <td>
+                          <div className="safe-score">{alert.momentumScore}</div>
+                          <div className="safe-sub">Ratio {alert.ratio.toFixed(2)}</div>
+                        </td>
+                        <td>
+                          <div className="safe-score">{alert.safetyScore}</div>
+                          <div className="safe-sub">Vol 1h {alert.vol1.toFixed(0)}</div>
+                        </td>
+                        <td>
+                          <div className="safe-score">${alert.priceUsd.toFixed(6)}</div>
+                          <div className="safe-sub">Vol 5m {alert.vol5.toFixed(0)}</div>
+                        </td>
+                        <td>
+                          <div className="safe-score">{alert.pch5.toFixed(2)}%</div>
+                          <div className="safe-sub">{alert.reasons.join(', ')}</div>
+                        </td>
+                        <td>
+                          <div className="safe-score">${alert.liq.toFixed(0)}</div>
+                          <a className="safe-link" href={alert.url} target="_blank" rel="noreferrer">
+                            Buka DexScreener
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <div className="safe-pagination">
+                  <button
+                    className="safe-page-btn"
+                    onClick={() => setPotentialPage((p) => Math.max(1, p - 1))}
+                    disabled={potentialPage === 1}
+                  >
+                    &larr; Sebelumnya
+                  </button>
+                  <div className="safe-page-indicator">
+                    Halaman {potentialPage} / {totalPotentialPages}
+                  </div>
+                  <button
+                    className="safe-page-btn"
+                    onClick={() => setPotentialPage((p) => Math.min(totalPotentialPages, p + 1))}
+                    disabled={potentialPage === totalPotentialPages}
                   >
                     Selanjutnya &rarr;
                   </button>
