@@ -564,11 +564,11 @@ export default function HomePage() {
         const ageMinutes = createdAt > 0 ? (now - createdAt) / (60 * 1000) : 0;
         const priceUsd = Number(best.priceUsd ?? 0);
 
-        if (liq < 50_000) return;
-        if (vol5 < 10_000) return;
+        if (liq < 25_000) return;
+        if (vol5 < 5_000) return;
         if (createdAt === 0 || ageMinutes < 60) return;
-        if (pch5 > 25) return;
-        if (ratio > 10) return;
+        if (pch5 > 35) return;
+        if (ratio > 12) return;
 
         const lastLiq = lastLiqRef.current.get(best.pairAddress) ?? liq;
         if (liq < lastLiq * 0.9) {
@@ -581,12 +581,14 @@ export default function HomePage() {
         if (liq >= 250_000) safetyScore += 40;
         else if (liq >= 100_000) safetyScore += 30;
         else if (liq >= 50_000) safetyScore += 20;
+        else if (liq >= 25_000) safetyScore += 10;
 
         if (ratio >= 1.1 && ratio <= 3.5) safetyScore += 30;
         else if ((ratio >= 1.0 && ratio < 1.1) || (ratio > 3.5 && ratio <= 5.0)) safetyScore += 15;
 
         if (vol1 >= 500_000) safetyScore += 20;
         else if (vol1 >= 200_000) safetyScore += 10;
+        else if (vol1 >= 80_000) safetyScore += 5;
 
         if (ageMinutes >= 7 * 24 * 60) safetyScore += 10;
         else if (ageMinutes >= 24 * 60) safetyScore += 5;
@@ -626,7 +628,7 @@ export default function HomePage() {
 
         safeList.push(alert);
 
-        if (safetyScore >= 75 && momentumScore >= 70) {
+        if (safetyScore >= 70 && momentumScore >= 60) {
           candidates.push(alert);
         } else {
           const progress = Math.min(
@@ -728,7 +730,7 @@ export default function HomePage() {
       setSafeWaiting(
         waiting
           .sort((a, b) => b.safetyScore - a.safetyScore || b.momentumScore - a.momentumScore)
-          .slice(0, 30)
+          .slice(0, 50)
       );
       setSafeAll(safeList.sort((a, b) => b.safetyScore - a.safetyScore || b.liq - a.liq));
     } catch (err: unknown) {
@@ -1983,7 +1985,7 @@ export default function HomePage() {
                   Filter anti-noise untuk token Solana dari DexScreener. Hanya alert jika aman + sedang naik.
                 </p>
               </div>
-              <span className="badge badge-neutral">Safety + Momentum</span>
+              <span className="badge badge-neutral">Safety + Momentum (longgar)</span>
             </div>
 
             {safeLoading ? (
@@ -2077,7 +2079,7 @@ export default function HomePage() {
                   Daftar token Solana yang lolos filter keamanan dasar. Status “BUY” bila sudah tembus aman + momentum.
                 </p>
               </div>
-              <span className="badge badge-neutral">Safety (lolos filter)</span>
+              <span className="badge badge-neutral">Safety (lolos filter longgar)</span>
             </div>
 
             {safeLoading ? (
