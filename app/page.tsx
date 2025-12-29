@@ -155,6 +155,7 @@ export default function HomePage() {
   const lastWarningStateRef = useRef<Map<string, string>>(new Map());
   const trackedPairsRef = useRef<Map<string, number>>(new Map());
   const lastLiqRef = useRef<Map<string, number>>(new Map());
+  const lastSafeTelegramRef = useRef<string | null>(null);
   const safeStateRef = useRef<
     Map<
       string,
@@ -678,20 +679,49 @@ export default function HomePage() {
         }
       });
 
+      const summaryLines: string[] = [];
       if (confirmed.length > 0) {
-        await Promise.allSettled(
-          confirmed.map((alert) =>
-            fetch('/api/telegram/notify', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                message: `BUY terkonfirmasi: ${alert.symbol} (${alert.dexId.toUpperCase()})\nSafety ${alert.safetyScore} | Momentum ${alert.momentumScore}\nHarga $${alert.priceUsd.toFixed(
-                  6
-                )} | pch5 ${alert.pch5.toFixed(2)}% | Liq $${alert.liq.toFixed(0)}\n${alert.url}`,
-              }),
-            })
-          )
-        );
+        summaryLines.push('BUY terkonfirmasi:');
+        confirmed.forEach((alert) => {
+          summaryLines.push(
+            `${alert.symbol} (${alert.dexId.toUpperCase()}) | Safety ${alert.safetyScore} | Mom ${alert.momentumScore} | $${alert.priceUsd.toFixed(
+              6
+            )} | pch5 ${alert.pch5.toFixed(2)}%`
+          );
+        });
+      }
+
+      if (safeList.length > 0) {
+        summaryLines.push('');
+        summaryLines.push('Koin aman (top safety):');
+        safeList.slice(0, 10).forEach((alert) => {
+          summaryLines.push(
+            `${alert.symbol} | Safety ${alert.safetyScore} | Liq $${alert.liq.toFixed(0)} | pch5 ${alert.pch5.toFixed(2)}%`
+          );
+        });
+      }
+
+      if (waiting.length > 0) {
+        summaryLines.push('');
+        summaryLines.push('Waiting menuju confirm:');
+        waiting.slice(0, 10).forEach((alert) => {
+          summaryLines.push(
+            `${alert.symbol} | Safety ${alert.safetyScore} | Mom ${alert.momentumScore} | ${alert.confirmProgress ?? 0}%`
+          );
+        });
+      }
+
+      const summaryMessage = summaryLines.join('\n').trim();
+      if (summaryMessage) {
+        const hash = summaryMessage;
+        if (lastSafeTelegramRef.current !== hash) {
+          lastSafeTelegramRef.current = hash;
+          await fetch('/api/telegram/notify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: summaryMessage }),
+          });
+        }
       }
 
       setSafeAlerts(confirmed);
