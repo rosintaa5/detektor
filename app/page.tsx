@@ -29,6 +29,58 @@ interface NewsResponse {
   news: NewsItem[];
 }
 
+interface DexPair {
+  pairAddress: string;
+  dexId: string;
+  url: string;
+  priceUsd?: string;
+  pairCreatedAt?: number;
+  liquidity?: {
+    usd?: number;
+  };
+  volume?: {
+    m5?: number;
+    h1?: number;
+  };
+  priceChange?: {
+    m5?: number;
+  };
+  txns?: {
+    m5?: {
+      buys?: number;
+      sells?: number;
+    };
+  };
+  baseToken?: {
+    symbol?: string;
+    address?: string;
+  };
+  quoteToken?: {
+    symbol?: string;
+  };
+}
+
+interface DexResponse {
+  pairs?: DexPair[];
+}
+
+interface SafeAlert {
+  symbol: string;
+  tokenAddress: string;
+  pairAddress: string;
+  dexId: string;
+  url: string;
+  safetyScore: number;
+  momentumScore: number;
+  priceUsd: number;
+  pch5: number;
+  vol5: number;
+  vol1: number;
+  liq: number;
+  ratio: number;
+  reasons: string[];
+}
+
 interface Prediction {
   asset: string;
   direction: PredictionDirection;
@@ -78,6 +130,9 @@ export default function HomePage() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [newsError, setNewsError] = useState<string | null>(null);
+  const [safeAlerts, setSafeAlerts] = useState<SafeAlert[]>([]);
+  const [safeError, setSafeError] = useState<string | null>(null);
+  const [safeLoading, setSafeLoading] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(
     () => typeof window !== 'undefined' && localStorage.getItem(PIN_STORAGE_KEY) === 'true'
   );
@@ -86,6 +141,18 @@ export default function HomePage() {
   const [scalpPage, setScalpPage] = useState(1);
   const lastWarningStateRef = useRef<Map<string, string>>(new Map());
   const trackedPairsRef = useRef<Map<string, number>>(new Map());
+  const lastLiqRef = useRef<Map<string, number>>(new Map());
+  const safeStateRef = useRef<
+    Map<
+      string,
+      {
+        status: 'candidate' | 'confirmed' | 'cooldown';
+        startedAt: number;
+        peakPrice: number;
+        cooldownUntil: number;
+      }
+    >
+  >(new Map());
 
   const formatter = useMemo(
     () =>
@@ -419,6 +486,167 @@ export default function HomePage() {
     }
   }, []);
 
+  const fetchSafeTokens = useCallback(async () => {
+    try {
+      setSafeLoading(true);
+      setSafeError(null);
+      const res = await fetch('/api/dexscreener');
+      if (!res.ok) {
+        throw new Error(`Gagal mengambil DexScreener (${res.status})`);
+      }
+      const data: DexResponse = await res.json();
+      const pairs = data.pairs ?? [];
+      const now = Date.now();
+
+      const grouped = new Map<string, DexPair[]>();
+      pairs.forEach((pair) => {
+        const token = pair.baseToken?.address;
+        if (!token) return;
+        const list = grouped.get(token) ?? [];
+        list.push(pair);
+        grouped.set(token, list);
+      });
+
+      const candidates: SafeAlert[] = [];
+      grouped.forEach((list, tokenAddress) => {
+        const best = [...list].sort((a, b) => {
+          const volA = a.volume?.m5 ?? 0;
+          const volB = b.volume?.m5 ?? 0;
+          if (volB !== volA) return volB - volA;
+          const liqA = a.liquidity?.usd ?? 0;
+          const liqB = b.liquidity?.usd ?? 0;
+          return liqB - liqA;
+        })[0];
+
+        if (!best) return;
+        const liq = best.liquidity?.usd ?? 0;
+        const vol5 = best.volume?.m5 ?? 0;
+        const vol1 = best.volume?.h1 ?? 0;
+        const pch5 = best.priceChange?.m5 ?? 0;
+        const buys = best.txns?.m5?.buys ?? 0;
+        const sells = best.txns?.m5?.sells ?? 0;
+        const ratio = buys / Math.max(sells, 1);
+        const createdAt = best.pairCreatedAt ?? 0;
+        const ageMinutes = createdAt > 0 ? (now - createdAt) / (60 * 1000) : 0;
+        const priceUsd = Number(best.priceUsd ?? 0);
+
+        if (liq < 50_000) return;
+        if (vol5 < 10_000) return;
+        if (createdAt > 0 && ageMinutes < 60) return;
+        if (pch5 > 25) return;
+        if (ratio > 10) return;
+
+        const lastLiq = lastLiqRef.current.get(best.pairAddress) ?? liq;
+        if (liq < lastLiq * 0.9) {
+          lastLiqRef.current.set(best.pairAddress, liq);
+          return;
+        }
+        lastLiqRef.current.set(best.pairAddress, liq);
+
+        let safetyScore = 0;
+        if (liq >= 250_000) safetyScore += 40;
+        else if (liq >= 100_000) safetyScore += 30;
+        else if (liq >= 50_000) safetyScore += 20;
+
+        if (ratio >= 1.1 && ratio <= 3.5) safetyScore += 30;
+        else if ((ratio >= 1.0 && ratio < 1.1) || (ratio > 3.5 && ratio <= 5.0)) safetyScore += 15;
+
+        if (vol1 >= 500_000) safetyScore += 20;
+        else if (vol1 >= 200_000) safetyScore += 10;
+
+        if (ageMinutes >= 7 * 24 * 60) safetyScore += 10;
+        else if (ageMinutes >= 24 * 60) safetyScore += 5;
+
+        safetyScore = Math.max(0, Math.min(100, Math.round(safetyScore)));
+
+        let momentumScore = 0;
+        if (pch5 >= 1 && pch5 <= 6) momentumScore += 40;
+        if (vol5 >= 10_000) momentumScore += 30;
+        if (ratio >= 1.3) momentumScore += 30;
+        momentumScore = Math.max(0, Math.min(100, Math.round(momentumScore)));
+
+        const reasons = [
+          liq >= 50_000 ? 'liq_ok' : null,
+          ageMinutes >= 60 ? 'age_ok' : null,
+          ratio >= 1.1 && ratio <= 3.5 ? 'ratio_ok' : null,
+          vol5 >= 10_000 ? 'vol_ok' : null,
+          pch5 <= 25 ? 'pch_safe' : null,
+        ].filter(Boolean) as string[];
+
+        const alert: SafeAlert = {
+          symbol: best.baseToken?.symbol ?? 'UNKNOWN',
+          tokenAddress,
+          pairAddress: best.pairAddress,
+          dexId: best.dexId,
+          url: best.url,
+          safetyScore,
+          momentumScore,
+          priceUsd,
+          pch5,
+          vol5,
+          vol1,
+          liq,
+          ratio,
+          reasons,
+        };
+
+        if (safetyScore >= 75 && momentumScore >= 70) {
+          candidates.push(alert);
+        } else {
+          const existing = safeStateRef.current.get(best.pairAddress);
+          if (existing?.status === 'candidate') {
+            safeStateRef.current.delete(best.pairAddress);
+          }
+        }
+      });
+
+      const confirmed: SafeAlert[] = [];
+      candidates.forEach((item) => {
+        const state = safeStateRef.current.get(item.pairAddress);
+        if (!state || state.status === 'cooldown') {
+          const cooldownActive = state?.cooldownUntil && now < state.cooldownUntil;
+          if (cooldownActive) return;
+          safeStateRef.current.set(item.pairAddress, {
+            status: 'candidate',
+            startedAt: now,
+            peakPrice: item.priceUsd,
+            cooldownUntil: state?.cooldownUntil ?? 0,
+          });
+          return;
+        }
+
+        if (state.status === 'candidate') {
+          const peakPrice = Math.max(state.peakPrice, item.priceUsd);
+          const elapsed = now - state.startedAt;
+          const drawdown = peakPrice > 0 ? ((peakPrice - item.priceUsd) / peakPrice) * 100 : 0;
+          safeStateRef.current.set(item.pairAddress, {
+            ...state,
+            peakPrice,
+          });
+
+          if (elapsed >= 3 * 60 * 1000 && elapsed <= 10 * 60 * 1000) {
+            if (item.safetyScore >= 75 && item.momentumScore >= 60 && drawdown <= 20) {
+              safeStateRef.current.set(item.pairAddress, {
+                status: 'cooldown',
+                startedAt: now,
+                peakPrice,
+                cooldownUntil: now + 15 * 60 * 1000,
+              });
+              confirmed.push(item);
+            }
+          }
+        }
+      });
+
+      setSafeAlerts(confirmed);
+    } catch (err: unknown) {
+      console.error(err);
+      setSafeError(err instanceof Error ? err.message : 'Gagal mengambil data DexScreener');
+    } finally {
+      setSafeLoading(false);
+    }
+  }, []);
+
   const handlePinSubmit = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -439,6 +667,7 @@ export default function HomePage() {
 
     fetchData();
     fetchNews();
+    fetchSafeTokens();
     const interval = setInterval(() => {
       fetchData();
       setNowTs(Date.now());
@@ -448,11 +677,16 @@ export default function HomePage() {
       fetchNews();
     }, 10 * 60 * 1000);
 
+    const safeInterval = setInterval(() => {
+      fetchSafeTokens();
+    }, 10 * 60 * 1000);
+
     return () => {
       clearInterval(interval);
       clearInterval(newsInterval);
+      clearInterval(safeInterval);
     };
-  }, [fetchData, fetchNews, isAuthorized]);
+  }, [fetchData, fetchNews, fetchSafeTokens, isAuthorized]);
 
   useEffect(() => {
     if (!isAuthorized) return undefined;
@@ -1612,6 +1846,74 @@ export default function HomePage() {
             ) : (
               <div className="pump-math-grid">
                 {pumpMathList.slice(0, 4).map((item) => renderPumpMathCard(item))}
+              </div>
+            )}
+          </section>
+
+          <section id="safe-detection" className="section-card accent-safe">
+            <div className="section-head">
+              <div>
+                <h3>INTI DETEKSI KOIN AMAN (SOLANA)</h3>
+                <p className="muted">
+                  Filter anti-noise untuk token Solana dari DexScreener. Hanya alert jika aman + sedang naik.
+                </p>
+              </div>
+              <span className="badge badge-neutral">Safety + Momentum</span>
+            </div>
+
+            {safeLoading ? (
+              <div className="empty-state small">Memuat kandidat aman...</div>
+            ) : safeError ? (
+              <div className="empty-state small">{safeError}</div>
+            ) : safeAlerts.length === 0 ? (
+              <div className="empty-state small">Belum ada kandidat “naik + aman” yang terkonfirmasi.</div>
+            ) : (
+              <div className="safe-table-wrap">
+                <table className="safe-table">
+                  <thead>
+                    <tr>
+                      <th>Token</th>
+                      <th>Skor</th>
+                      <th>Harga</th>
+                      <th>Performa 5m</th>
+                      <th>Volume/Liq</th>
+                      <th>Alasan lolos</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {safeAlerts.map((alert) => (
+                      <tr key={alert.pairAddress}>
+                        <td>
+                          <div className="safe-token">{alert.symbol}</div>
+                          <div className="safe-sub">{alert.dexId.toUpperCase()} • {alert.pairAddress.slice(0, 6)}...</div>
+                          <a className="safe-link" href={alert.url} target="_blank" rel="noreferrer">
+                            Buka DexScreener
+                          </a>
+                        </td>
+                        <td>
+                          <div className="safe-score">Safety {alert.safetyScore}</div>
+                          <div className="safe-sub">Momentum {alert.momentumScore}</div>
+                        </td>
+                        <td>
+                          <div className="safe-score">${alert.priceUsd.toFixed(6)}</div>
+                          <div className="safe-sub">Ratio {alert.ratio.toFixed(2)}</div>
+                        </td>
+                        <td>
+                          <div className="safe-score">{alert.pch5.toFixed(2)}%</div>
+                          <div className="safe-sub">Vol 5m {alert.vol5.toFixed(0)}</div>
+                        </td>
+                        <td>
+                          <div className="safe-score">${alert.liq.toFixed(0)}</div>
+                          <div className="safe-sub">Vol 1h {alert.vol1.toFixed(0)}</div>
+                        </td>
+                        <td>
+                          <div className="safe-reason">{alert.reasons.join(', ')}</div>
+                          <div className="safe-sub">{alert.tokenAddress.slice(0, 10)}...</div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </section>

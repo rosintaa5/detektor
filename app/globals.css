@@ -1150,6 +1150,12 @@ a {
   box-shadow: 0 14px 32px rgba(0, 0, 0, 0.25);
 }
 
+.accent-safe {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.85), rgba(71, 85, 105, 0.12));
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.25);
+}
+
 .scalp-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -1209,6 +1215,69 @@ a {
 }
 
 .scalp-reason {
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.safe-table-wrap {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 0.9rem;
+  padding: 0.2rem;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.25);
+}
+
+.safe-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #e2e8f0;
+  font-size: 0.95rem;
+}
+
+.safe-table th,
+.safe-table td {
+  padding: 0.75rem 0.85rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.14);
+}
+
+.safe-table thead {
+  background: linear-gradient(90deg, rgba(30, 41, 59, 0.92), rgba(71, 85, 105, 0.7));
+}
+
+.safe-table th {
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  color: #cbd5e1;
+  font-weight: 700;
+}
+
+.safe-table tr:hover td {
+  background: rgba(226, 232, 240, 0.05);
+}
+
+.safe-token {
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.safe-score {
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.safe-sub {
+  font-size: 0.82rem;
+  color: #cbd5e1;
+}
+
+.safe-link {
+  font-size: 0.8rem;
+  color: #93c5fd;
+  font-weight: 600;
+}
+
+.safe-reason {
   font-weight: 700;
   color: #e2e8f0;
 }
