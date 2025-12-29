@@ -64,6 +64,15 @@ interface DexResponse {
   pairs?: DexPair[];
 }
 
+interface DexBoostToken {
+  tokenAddress?: string;
+  address?: string;
+  chainId?: string;
+  token?: {
+    address?: string;
+  };
+}
+
 interface SafeAlert {
   symbol: string;
   tokenAddress: string;
@@ -490,26 +499,44 @@ export default function HomePage() {
     try {
       setSafeLoading(true);
       setSafeError(null);
-      const res = await fetch('/api/dexscreener');
-      if (!res.ok) {
-        throw new Error(`Gagal mengambil DexScreener (${res.status})`);
+      const boostRes = await fetch('/api/dexscreener/boosts');
+      if (!boostRes.ok) {
+        throw new Error(`Gagal mengambil DexScreener boosts (${boostRes.status})`);
       }
-      const data: DexResponse = await res.json();
-      const pairs = data.pairs ?? [];
+      const boostData = (await boostRes.json()) as DexBoostToken[] | { tokens?: DexBoostToken[]; data?: DexBoostToken[] };
+      const boostList = Array.isArray(boostData)
+        ? boostData
+        : boostData.tokens ?? boostData.data ?? [];
+      const tokenAddresses = boostList
+        .filter((item) => !item.chainId || item.chainId.toLowerCase() === 'solana')
+        .map((item) => item.tokenAddress ?? item.address ?? item.token?.address ?? '')
+        .filter(Boolean)
+        .slice(0, 20);
+
+      if (tokenAddresses.length === 0) {
+        setSafeAlerts([]);
+        return;
+      }
+
       const now = Date.now();
 
-      const grouped = new Map<string, DexPair[]>();
-      pairs.forEach((pair) => {
-        const token = pair.baseToken?.address;
-        if (!token) return;
-        const list = grouped.get(token) ?? [];
-        list.push(pair);
-        grouped.set(token, list);
-      });
+      const pairResults = await Promise.allSettled(
+        tokenAddresses.map(async (address) => {
+          const res = await fetch(`/api/dexscreener/token-pairs/${address}`);
+          if (!res.ok) {
+            throw new Error(`Token pairs ${address} ${res.status}`);
+          }
+          const data = (await res.json()) as DexPair[] | DexResponse;
+          const pairs = Array.isArray(data) ? data : data.pairs ?? [];
+          return { address, pairs };
+        })
+      );
 
       const candidates: SafeAlert[] = [];
-      grouped.forEach((list, tokenAddress) => {
-        const best = [...list].sort((a, b) => {
+      pairResults.forEach((result) => {
+        if (result.status !== 'fulfilled') return;
+        const { pairs, address } = result.value;
+        const best = [...pairs].sort((a, b) => {
           const volA = a.volume?.m5 ?? 0;
           const volB = b.volume?.m5 ?? 0;
           if (volB !== volA) return volB - volA;
@@ -532,7 +559,7 @@ export default function HomePage() {
 
         if (liq < 50_000) return;
         if (vol5 < 10_000) return;
-        if (createdAt > 0 && ageMinutes < 60) return;
+        if (createdAt === 0 || ageMinutes < 60) return;
         if (pch5 > 25) return;
         if (ratio > 10) return;
 
@@ -575,7 +602,7 @@ export default function HomePage() {
 
         const alert: SafeAlert = {
           symbol: best.baseToken?.symbol ?? 'UNKNOWN',
-          tokenAddress,
+          tokenAddress: address,
           pairAddress: best.pairAddress,
           dexId: best.dexId,
           url: best.url,
