@@ -678,6 +678,22 @@ export default function HomePage() {
         }
       });
 
+      if (confirmed.length > 0) {
+        await Promise.allSettled(
+          confirmed.map((alert) =>
+            fetch('/api/telegram/notify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                message: `BUY terkonfirmasi: ${alert.symbol} (${alert.dexId.toUpperCase()})\nSafety ${alert.safetyScore} | Momentum ${alert.momentumScore}\nHarga $${alert.priceUsd.toFixed(
+                  6
+                )} | pch5 ${alert.pch5.toFixed(2)}% | Liq $${alert.liq.toFixed(0)}\n${alert.url}`,
+              }),
+            })
+          )
+        );
+      }
+
       setSafeAlerts(confirmed);
       setSafeWaiting(
         waiting
