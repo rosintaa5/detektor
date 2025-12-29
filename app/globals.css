@@ -1316,6 +1316,38 @@ a {
   gap: 0.5rem;
 }
 
+.safe-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.75rem;
+}
+
+.safe-page-btn {
+  background: rgba(226, 232, 240, 0.14);
+  border: 1px solid rgba(226, 232, 240, 0.28);
+  color: #f8fafc;
+  border-radius: 0.65rem;
+  padding: 0.45rem 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.safe-page-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.safe-page-btn:not(:disabled):hover {
+  background: rgba(226, 232, 240, 0.22);
+}
+
+.safe-page-indicator {
+  font-weight: 700;
+  color: #cbd5e1;
+}
+
 
 .scalp-pagination {
   display: flex;

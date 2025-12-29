@@ -141,6 +141,8 @@ export default function HomePage() {
   const [newsError, setNewsError] = useState<string | null>(null);
   const [safeAlerts, setSafeAlerts] = useState<SafeAlert[]>([]);
   const [safeWaiting, setSafeWaiting] = useState<SafeAlert[]>([]);
+  const [safeAll, setSafeAll] = useState<SafeAlert[]>([]);
+  const [safePage, setSafePage] = useState(1);
   const [safeError, setSafeError] = useState<string | null>(null);
   const [safeLoading, setSafeLoading] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(
@@ -535,6 +537,7 @@ export default function HomePage() {
 
       const candidates: SafeAlert[] = [];
       const waiting: SafeAlert[] = [];
+      const safeList: SafeAlert[] = [];
       pairResults.forEach((result) => {
         if (result.status !== 'fulfilled') return;
         const { pairs, address } = result.value;
@@ -619,6 +622,10 @@ export default function HomePage() {
           reasons,
         };
 
+        if (safetyScore >= 60) {
+          safeList.push(alert);
+        }
+
         if (safetyScore >= 75 && momentumScore >= 70) {
           candidates.push(alert);
         } else {
@@ -674,6 +681,7 @@ export default function HomePage() {
           .sort((a, b) => b.safetyScore - a.safetyScore || b.momentumScore - a.momentumScore)
           .slice(0, 12)
       );
+      setSafeAll(safeList.sort((a, b) => b.safetyScore - a.safetyScore || b.liq - a.liq));
     } catch (err: unknown) {
       console.error(err);
       setSafeError(err instanceof Error ? err.message : 'Gagal mengambil data DexScreener');
@@ -1055,6 +1063,18 @@ export default function HomePage() {
   const displayedScalp = useMemo(
     () => scalpQuickList.slice((scalpPage - 1) * scalpPageSize, scalpPage * scalpPageSize),
     [scalpPage, scalpPageSize, scalpQuickList]
+  );
+
+  const safePageSize = 10;
+  const totalSafePages = Math.max(1, Math.ceil(safeAll.length / safePageSize));
+
+  useEffect(() => {
+    setSafePage((prev) => Math.min(Math.max(1, prev), totalSafePages));
+  }, [totalSafePages]);
+
+  const displayedSafeAll = useMemo(
+    () => safeAll.slice((safePage - 1) * safePageSize, safePage * safePageSize),
+    [safeAll, safePage, safePageSize]
   );
 
   const renderPumpMathCard = useCallback(
@@ -1973,6 +1993,91 @@ export default function HomePage() {
                   </div>
                 )}
               </>
+            )}
+          </section>
+
+          <section id="safe-all" className="section-card accent-safe">
+            <div className="section-head">
+              <div>
+                <h3>Daftar Semua Koin Aman (Safety)</h3>
+                <p className="muted">Daftar token Solana yang lolos filter keamanan dasar dengan skor safety terbaik.</p>
+              </div>
+              <span className="badge badge-neutral">Safety &ge; 60</span>
+            </div>
+
+            {safeLoading ? (
+              <div className="empty-state small">Memuat daftar aman...</div>
+            ) : safeError ? (
+              <div className="empty-state small">{safeError}</div>
+            ) : displayedSafeAll.length === 0 ? (
+              <div className="empty-state small">Belum ada koin aman yang terdeteksi.</div>
+            ) : (
+              <div className="safe-table-wrap">
+                <table className="safe-table">
+                  <thead>
+                    <tr>
+                      <th>Token</th>
+                      <th>Safety</th>
+                      <th>Harga</th>
+                      <th>Performa 5m</th>
+                      <th>Liquidity</th>
+                      <th>Info</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayedSafeAll.map((alert) => (
+                      <tr key={`safe-${alert.pairAddress}`}>
+                        <td>
+                          <div className="safe-token">{alert.symbol}</div>
+                          <div className="safe-sub">{alert.dexId.toUpperCase()} • {alert.pairAddress.slice(0, 6)}...</div>
+                        </td>
+                        <td>
+                          <div className="safe-score">{alert.safetyScore}</div>
+                          <div className="safe-sub">Ratio {alert.ratio.toFixed(2)}</div>
+                        </td>
+                        <td>
+                          <div className="safe-score">${alert.priceUsd.toFixed(6)}</div>
+                          <div className="safe-sub">Vol 1h {alert.vol1.toFixed(0)}</div>
+                        </td>
+                        <td>
+                          <div className="safe-score">{alert.pch5.toFixed(2)}%</div>
+                          <div className="safe-sub">Vol 5m {alert.vol5.toFixed(0)}</div>
+                        </td>
+                        <td>
+                          <div className="safe-score">${alert.liq.toFixed(0)}</div>
+                          <div className="safe-sub">{alert.tokenAddress.slice(0, 10)}...</div>
+                        </td>
+                        <td>
+                          <div className="safe-reason">{alert.reasons.join(', ')}</div>
+                          <a className="safe-link" href={alert.url} target="_blank" rel="noreferrer">
+                            Buka DexScreener
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <div className="safe-pagination">
+                  <button
+                    className="safe-page-btn"
+                    onClick={() => setSafePage((p) => Math.max(1, p - 1))}
+                    disabled={safePage === 1}
+                  >
+                    &larr; Sebelumnya
+                  </button>
+                  <div className="safe-page-indicator">
+                    Halaman {safePage} / {totalSafePages}
+                  </div>
+                  <button
+                    className="safe-page-btn"
+                    onClick={() => setSafePage((p) => Math.min(totalSafePages, p + 1))}
+                    disabled={safePage === totalSafePages}
+                  >
+                    Selanjutnya &rarr;
+                  </button>
+                </div>
+              </div>
             )}
           </section>
 
