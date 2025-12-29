@@ -622,9 +622,7 @@ export default function HomePage() {
           reasons,
         };
 
-        if (safetyScore >= 50) {
-          safeList.push(alert);
-        }
+        safeList.push(alert);
 
         if (safetyScore >= 75 && momentumScore >= 70) {
           candidates.push(alert);
@@ -1077,10 +1075,6 @@ export default function HomePage() {
     [safeAll, safePage, safePageSize]
   );
 
-  const confirmedSafeSet = useMemo(
-    () => new Set(safeAlerts.map((item) => item.pairAddress)),
-    [safeAlerts]
-  );
 
   const renderPumpMathCard = useCallback(
     (item: (typeof pumpMathList)[number]) => {
@@ -2009,7 +2003,7 @@ export default function HomePage() {
                   Daftar token Solana yang lolos filter keamanan dasar. Status “BUY” bila sudah tembus aman + momentum.
                 </p>
               </div>
-              <span className="badge badge-neutral">Safety &ge; 50</span>
+              <span className="badge badge-neutral">Safety (lolos filter)</span>
             </div>
 
             {safeLoading ? (
@@ -2024,7 +2018,6 @@ export default function HomePage() {
                   <thead>
                     <tr>
                       <th>Token</th>
-                      <th>Status</th>
                       <th>Safety</th>
                       <th>Harga</th>
                       <th>Performa 5m</th>
@@ -2038,11 +2031,6 @@ export default function HomePage() {
                         <td>
                           <div className="safe-token">{alert.symbol}</div>
                           <div className="safe-sub">{alert.dexId.toUpperCase()} • {alert.pairAddress.slice(0, 6)}...</div>
-                        </td>
-                        <td>
-                          <div className={confirmedSafeSet.has(alert.pairAddress) ? 'safe-status buy' : 'safe-status wait'}>
-                            {confirmedSafeSet.has(alert.pairAddress) ? 'BUY' : 'WAITING'}
-                          </div>
                         </td>
                         <td>
                           <div className="safe-score">{alert.safetyScore}</div>
