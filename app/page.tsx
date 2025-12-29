@@ -1149,11 +1149,14 @@ export default function HomePage() {
           ? `Layak dibeli: upside ${item.upsidePct.toFixed(1)}% & RR ${item.rrLive.toFixed(2)}x (RR sehat).`
           : `Masih layak: upside ${item.upsidePct.toFixed(1)}% & RR ${item.rrLive.toFixed(2)}x (cukup).`;
 
+      const shouldWaitCorrection = item.entryGapPct > 3 && item.heatPct < 70;
       const timingLine = item.isLate
         ? `Tahan entry dulu: tunggu harga turun ke sekitar ${formatPrice(item.coin.entry)}.`
-        : item.entryGapPct <= 1
-          ? 'Beli dulu kecil: harga dekat entry, momentum jalan.'
-          : 'Boleh curi start: harga masih di bawah entry/diskon.';
+        : shouldWaitCorrection
+          ? `Tunggu koreksi ke ${formatPrice(item.coin.entry)} sebelum entry (harga masih di atas entry).`
+          : item.entryGapPct <= 1
+            ? 'Beli dulu kecil: harga dekat entry, momentum jalan.'
+            : 'Langsung entry bertahap: momentum kuat, jangan ketinggalan.';
 
       const paceLine =
         item.heatPct >= 80
@@ -1165,6 +1168,11 @@ export default function HomePage() {
       const cautionLine = `Hati-hati: ${item.riskNote.toLowerCase()}.`;
       const tpChance = Math.min(99, Math.max(45, Math.round(item.confidencePct * 0.92 + item.rrLive * 6)));
       const tpLine = `Prediksi tembus TP: ${tpChance}% (gabungan score & bias BTC).`;
+      const entryReason = shouldWaitCorrection
+        ? `Alasan tunggu koreksi: gap entry ${item.entryGapPct.toFixed(1)}%, heat ${item.heatPct.toFixed(1)}% masih aman.`
+        : `Alasan entry sekarang: momentum ${item.momentumPct.toFixed(1)}%, RR ${item.rrLive.toFixed(
+            2
+          )}x, pola ${item.patternLabel.toLowerCase()}.`;
       const supportLine = `Pendukung: ${item.structureNote}; ${item.btcDrag}; Upside ${item.upsidePct.toFixed(
         1
       )}% vs buffer ${item.downsidePct.toFixed(1)}%.`;
@@ -1250,6 +1258,7 @@ export default function HomePage() {
               <div className="pump-math-verdict">
                 <div className="verdict-line">{tpLine}</div>
                 <div className="verdict-line">{supportLine}</div>
+                <div className="verdict-line">{entryReason}</div>
                 <div className="verdict-line">{patternLine}</div>
                 <div className="verdict-line">{buyLine}</div>
                 <div className="verdict-line">{timingLine}</div>
