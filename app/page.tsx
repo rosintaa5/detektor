@@ -622,7 +622,7 @@ export default function HomePage() {
           reasons,
         };
 
-        if (safetyScore >= 60) {
+        if (safetyScore >= 50) {
           safeList.push(alert);
         }
 
@@ -1075,6 +1075,11 @@ export default function HomePage() {
   const displayedSafeAll = useMemo(
     () => safeAll.slice((safePage - 1) * safePageSize, safePage * safePageSize),
     [safeAll, safePage, safePageSize]
+  );
+
+  const confirmedSafeSet = useMemo(
+    () => new Set(safeAlerts.map((item) => item.pairAddress)),
+    [safeAlerts]
   );
 
   const renderPumpMathCard = useCallback(
@@ -2000,9 +2005,11 @@ export default function HomePage() {
             <div className="section-head">
               <div>
                 <h3>Daftar Semua Koin Aman (Safety)</h3>
-                <p className="muted">Daftar token Solana yang lolos filter keamanan dasar dengan skor safety terbaik.</p>
+                <p className="muted">
+                  Daftar token Solana yang lolos filter keamanan dasar. Status “BUY” bila sudah tembus aman + momentum.
+                </p>
               </div>
-              <span className="badge badge-neutral">Safety &ge; 60</span>
+              <span className="badge badge-neutral">Safety &ge; 50</span>
             </div>
 
             {safeLoading ? (
@@ -2017,6 +2024,7 @@ export default function HomePage() {
                   <thead>
                     <tr>
                       <th>Token</th>
+                      <th>Status</th>
                       <th>Safety</th>
                       <th>Harga</th>
                       <th>Performa 5m</th>
@@ -2030,6 +2038,11 @@ export default function HomePage() {
                         <td>
                           <div className="safe-token">{alert.symbol}</div>
                           <div className="safe-sub">{alert.dexId.toUpperCase()} • {alert.pairAddress.slice(0, 6)}...</div>
+                        </td>
+                        <td>
+                          <div className={confirmedSafeSet.has(alert.pairAddress) ? 'safe-status buy' : 'safe-status wait'}>
+                            {confirmedSafeSet.has(alert.pairAddress) ? 'BUY' : 'WAITING'}
+                          </div>
                         </td>
                         <td>
                           <div className="safe-score">{alert.safetyScore}</div>
