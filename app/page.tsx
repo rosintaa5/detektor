@@ -140,6 +140,7 @@ export default function HomePage() {
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [newsError, setNewsError] = useState<string | null>(null);
   const [safeAlerts, setSafeAlerts] = useState<SafeAlert[]>([]);
+  const [safeWaiting, setSafeWaiting] = useState<SafeAlert[]>([]);
   const [safeError, setSafeError] = useState<string | null>(null);
   const [safeLoading, setSafeLoading] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(
@@ -533,6 +534,7 @@ export default function HomePage() {
       );
 
       const candidates: SafeAlert[] = [];
+      const waiting: SafeAlert[] = [];
       pairResults.forEach((result) => {
         if (result.status !== 'fulfilled') return;
         const { pairs, address } = result.value;
@@ -620,6 +622,7 @@ export default function HomePage() {
         if (safetyScore >= 75 && momentumScore >= 70) {
           candidates.push(alert);
         } else {
+          waiting.push(alert);
           const existing = safeStateRef.current.get(best.pairAddress);
           if (existing?.status === 'candidate') {
             safeStateRef.current.delete(best.pairAddress);
@@ -666,6 +669,11 @@ export default function HomePage() {
       });
 
       setSafeAlerts(confirmed);
+      setSafeWaiting(
+        waiting
+          .sort((a, b) => b.safetyScore - a.safetyScore || b.momentumScore - a.momentumScore)
+          .slice(0, 12)
+      );
     } catch (err: unknown) {
       console.error(err);
       setSafeError(err instanceof Error ? err.message : 'Gagal mengambil data DexScreener');
@@ -1892,56 +1900,79 @@ export default function HomePage() {
               <div className="empty-state small">Memuat kandidat aman...</div>
             ) : safeError ? (
               <div className="empty-state small">{safeError}</div>
-            ) : safeAlerts.length === 0 ? (
-              <div className="empty-state small">Belum ada kandidat “naik + aman” yang terkonfirmasi.</div>
+            ) : safeAlerts.length === 0 && safeWaiting.length === 0 ? (
+              <div className="empty-state small">Belum ada kandidat “naik + aman”.</div>
             ) : (
-              <div className="safe-table-wrap">
-                <table className="safe-table">
-                  <thead>
-                    <tr>
-                      <th>Token</th>
-                      <th>Skor</th>
-                      <th>Harga</th>
-                      <th>Performa 5m</th>
-                      <th>Volume/Liq</th>
-                      <th>Alasan lolos</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {safeAlerts.map((alert) => (
-                      <tr key={alert.pairAddress}>
-                        <td>
-                          <div className="safe-token">{alert.symbol}</div>
-                          <div className="safe-sub">{alert.dexId.toUpperCase()} • {alert.pairAddress.slice(0, 6)}...</div>
-                          <a className="safe-link" href={alert.url} target="_blank" rel="noreferrer">
-                            Buka DexScreener
-                          </a>
-                        </td>
-                        <td>
-                          <div className="safe-score">Safety {alert.safetyScore}</div>
-                          <div className="safe-sub">Momentum {alert.momentumScore}</div>
-                        </td>
-                        <td>
-                          <div className="safe-score">${alert.priceUsd.toFixed(6)}</div>
-                          <div className="safe-sub">Ratio {alert.ratio.toFixed(2)}</div>
-                        </td>
-                        <td>
-                          <div className="safe-score">{alert.pch5.toFixed(2)}%</div>
-                          <div className="safe-sub">Vol 5m {alert.vol5.toFixed(0)}</div>
-                        </td>
-                        <td>
-                          <div className="safe-score">${alert.liq.toFixed(0)}</div>
-                          <div className="safe-sub">Vol 1h {alert.vol1.toFixed(0)}</div>
-                        </td>
-                        <td>
-                          <div className="safe-reason">{alert.reasons.join(', ')}</div>
-                          <div className="safe-sub">{alert.tokenAddress.slice(0, 10)}...</div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <>
+                {safeAlerts.length > 0 && (
+                  <div className="safe-table-wrap">
+                    <table className="safe-table">
+                      <thead>
+                        <tr>
+                          <th>Token (Confirmed)</th>
+                          <th>Skor</th>
+                          <th>Harga</th>
+                          <th>Performa 5m</th>
+                          <th>Volume/Liq</th>
+                          <th>Alasan lolos</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {safeAlerts.map((alert) => (
+                          <tr key={alert.pairAddress}>
+                            <td>
+                              <div className="safe-token">{alert.symbol}</div>
+                              <div className="safe-sub">{alert.dexId.toUpperCase()} • {alert.pairAddress.slice(0, 6)}...</div>
+                              <a className="safe-link" href={alert.url} target="_blank" rel="noreferrer">
+                                Buka DexScreener
+                              </a>
+                            </td>
+                            <td>
+                              <div className="safe-score">Safety {alert.safetyScore}</div>
+                              <div className="safe-sub">Momentum {alert.momentumScore}</div>
+                            </td>
+                            <td>
+                              <div className="safe-score">${alert.priceUsd.toFixed(6)}</div>
+                              <div className="safe-sub">Ratio {alert.ratio.toFixed(2)}</div>
+                            </td>
+                            <td>
+                              <div className="safe-score">{alert.pch5.toFixed(2)}%</div>
+                              <div className="safe-sub">Vol 5m {alert.vol5.toFixed(0)}</div>
+                            </td>
+                            <td>
+                              <div className="safe-score">${alert.liq.toFixed(0)}</div>
+                              <div className="safe-sub">Vol 1h {alert.vol1.toFixed(0)}</div>
+                            </td>
+                            <td>
+                              <div className="safe-reason">{alert.reasons.join(', ')}</div>
+                              <div className="safe-sub">{alert.tokenAddress.slice(0, 10)}...</div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {safeWaiting.length > 0 && (
+                  <div className="safe-waiting">
+                    <div className="safe-waiting-title">Waiting list (belum confirm)</div>
+                    <div className="safe-waiting-grid">
+                      {safeWaiting.map((item) => (
+                        <div key={item.pairAddress} className="safe-waiting-card">
+                          <div className="safe-waiting-head">
+                            <div className="safe-token">{item.symbol}</div>
+                            <div className="safe-score">Safety {item.safetyScore}</div>
+                          </div>
+                          <div className="safe-sub">Momentum {item.momentumScore} • {item.pch5.toFixed(2)}%</div>
+                          <div className="safe-sub">Liq ${item.liq.toFixed(0)} • Ratio {item.ratio.toFixed(2)}</div>
+                          <div className="safe-reason">{item.reasons.join(', ')}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </section>
 
