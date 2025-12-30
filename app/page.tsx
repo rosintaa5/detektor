@@ -1659,7 +1659,7 @@ export default function HomePage() {
               <div>
                 <h3>Deteksi Pump Tinggi (Indodax)</h3>
                 <p className="muted">
-                  Hasil deteksi live berdasarkan data Lab Hitung Mau Pump.
+                  Hasil deteksi live berdasarkan data ticker Indodax dan rumus skor lengkap.
                 </p>
               </div>
               <span className="badge badge-neutral">Deteksi live</span>
@@ -1712,10 +1712,10 @@ export default function HomePage() {
                             </td>
                             <td>
                               <div className="safe-reason">
-                                Vol {item.volumeScore.toFixed(0)} + RR {item.rrScore.toFixed(0)} + Setup{' '}
+                                Rumus: Vol {item.volumeScore.toFixed(0)} + RR {item.rrScore.toFixed(0)} + Setup{' '}
                                 {item.setupScore.toFixed(0)} + Mom {item.momentumScore.toFixed(0)}
                               </div>
-                              <div className="safe-sub">Skor total {item.score}</div>
+                              <div className="safe-sub">Skor total {item.score} • Edge {item.upsidePct.toFixed(1)}%</div>
                             </td>
                             <td>
                               <div className="safe-reason">{reason}</div>
