@@ -29,67 +29,7 @@ interface NewsResponse {
   news: NewsItem[];
 }
 
-interface DexPair {
-  pairAddress: string;
-  dexId: string;
-  url: string;
-  priceUsd?: string;
-  pairCreatedAt?: number;
-  liquidity?: {
-    usd?: number;
-  };
-  volume?: {
-    m5?: number;
-    h1?: number;
-  };
-  priceChange?: {
-    m5?: number;
-  };
-  txns?: {
-    m5?: {
-      buys?: number;
-      sells?: number;
-    };
-  };
-  baseToken?: {
-    symbol?: string;
-    address?: string;
-  };
-  quoteToken?: {
-    symbol?: string;
-  };
-}
 
-interface DexResponse {
-  pairs?: DexPair[];
-}
-
-interface DexBoostToken {
-  tokenAddress?: string;
-  address?: string;
-  chainId?: string;
-  token?: {
-    address?: string;
-  };
-}
-
-interface SafeAlert {
-  symbol: string;
-  tokenAddress: string;
-  pairAddress: string;
-  dexId: string;
-  url: string;
-  safetyScore: number;
-  momentumScore: number;
-  confirmProgress?: number;
-  priceUsd: number;
-  pch5: number;
-  vol5: number;
-  vol1: number;
-  liq: number;
-  ratio: number;
-  reasons: string[];
-}
 
 interface Prediction {
   asset: string;
@@ -140,12 +80,6 @@ export default function HomePage() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [newsError, setNewsError] = useState<string | null>(null);
-  const [safeAlerts, setSafeAlerts] = useState<SafeAlert[]>([]);
-  const [safeWaiting, setSafeWaiting] = useState<SafeAlert[]>([]);
-  const [safeAll, setSafeAll] = useState<SafeAlert[]>([]);
-  const [safePage, setSafePage] = useState(1);
-  const [safeError, setSafeError] = useState<string | null>(null);
-  const [safeLoading, setSafeLoading] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(
     () => typeof window !== 'undefined' && localStorage.getItem(PIN_STORAGE_KEY) === 'true'
   );
@@ -154,19 +88,6 @@ export default function HomePage() {
   const [scalpPage, setScalpPage] = useState(1);
   const lastWarningStateRef = useRef<Map<string, string>>(new Map());
   const trackedPairsRef = useRef<Map<string, number>>(new Map());
-  const lastLiqRef = useRef<Map<string, number>>(new Map());
-  const lastSafeTelegramRef = useRef<string | null>(null);
-  const safeStateRef = useRef<
-    Map<
-      string,
-      {
-        status: 'candidate' | 'confirmed' | 'cooldown';
-        startedAt: number;
-        peakPrice: number;
-        cooldownUntil: number;
-      }
-    >
-  >(new Map());
 
   const formatter = useMemo(
     () =>
@@ -500,246 +421,6 @@ export default function HomePage() {
     }
   }, []);
 
-  const fetchSafeTokens = useCallback(async () => {
-    try {
-      setSafeLoading(true);
-      setSafeError(null);
-      const boostRes = await fetch('/api/dexscreener/boosts');
-      if (!boostRes.ok) {
-        throw new Error(`Gagal mengambil DexScreener boosts (${boostRes.status})`);
-      }
-      const boostData = (await boostRes.json()) as DexBoostToken[] | { tokens?: DexBoostToken[]; data?: DexBoostToken[] };
-      const boostList = Array.isArray(boostData)
-        ? boostData
-        : boostData.tokens ?? boostData.data ?? [];
-      const tokenAddresses = boostList
-        .filter((item) => !item.chainId || item.chainId.toLowerCase() === 'solana')
-        .map((item) => item.tokenAddress ?? item.address ?? item.token?.address ?? '')
-        .filter(Boolean)
-        .slice(0, 20);
-
-      if (tokenAddresses.length === 0) {
-        setSafeAlerts([]);
-        return;
-      }
-
-      const now = Date.now();
-
-      const pairResults = await Promise.allSettled(
-        tokenAddresses.map(async (address) => {
-          const res = await fetch(`/api/dexscreener/token-pairs/${address}`);
-          if (!res.ok) {
-            throw new Error(`Token pairs ${address} ${res.status}`);
-          }
-          const data = (await res.json()) as DexPair[] | DexResponse;
-          const pairs = Array.isArray(data) ? data : data.pairs ?? [];
-          return { address, pairs };
-        })
-      );
-
-      const candidates: SafeAlert[] = [];
-      const waiting: SafeAlert[] = [];
-      const safeList: SafeAlert[] = [];
-      pairResults.forEach((result) => {
-        if (result.status !== 'fulfilled') return;
-        const { pairs, address } = result.value;
-        const best = [...pairs].sort((a, b) => {
-          const volA = a.volume?.m5 ?? 0;
-          const volB = b.volume?.m5 ?? 0;
-          if (volB !== volA) return volB - volA;
-          const liqA = a.liquidity?.usd ?? 0;
-          const liqB = b.liquidity?.usd ?? 0;
-          return liqB - liqA;
-        })[0];
-
-        if (!best) return;
-        const liq = best.liquidity?.usd ?? 0;
-        const vol5 = best.volume?.m5 ?? 0;
-        const vol1 = best.volume?.h1 ?? 0;
-        const pch5 = best.priceChange?.m5 ?? 0;
-        const buys = best.txns?.m5?.buys ?? 0;
-        const sells = best.txns?.m5?.sells ?? 0;
-        const ratio = buys / Math.max(sells, 1);
-        const createdAt = best.pairCreatedAt ?? 0;
-        const ageMinutes = createdAt > 0 ? (now - createdAt) / (60 * 1000) : 0;
-        const priceUsd = Number(best.priceUsd ?? 0);
-
-        if (liq < 25_000) return;
-        if (vol5 < 5_000) return;
-        if (createdAt === 0 || ageMinutes < 60) return;
-        if (pch5 > 35) return;
-        if (ratio > 12) return;
-
-        const lastLiq = lastLiqRef.current.get(best.pairAddress) ?? liq;
-        if (liq < lastLiq * 0.9) {
-          lastLiqRef.current.set(best.pairAddress, liq);
-          return;
-        }
-        lastLiqRef.current.set(best.pairAddress, liq);
-
-        let safetyScore = 0;
-        if (liq >= 250_000) safetyScore += 40;
-        else if (liq >= 100_000) safetyScore += 30;
-        else if (liq >= 50_000) safetyScore += 20;
-        else if (liq >= 25_000) safetyScore += 10;
-
-        if (ratio >= 1.1 && ratio <= 3.5) safetyScore += 30;
-        else if ((ratio >= 1.0 && ratio < 1.1) || (ratio > 3.5 && ratio <= 5.0)) safetyScore += 15;
-
-        if (vol1 >= 500_000) safetyScore += 20;
-        else if (vol1 >= 200_000) safetyScore += 10;
-        else if (vol1 >= 80_000) safetyScore += 5;
-
-        if (ageMinutes >= 7 * 24 * 60) safetyScore += 10;
-        else if (ageMinutes >= 24 * 60) safetyScore += 5;
-
-        safetyScore = Math.max(0, Math.min(100, Math.round(safetyScore)));
-
-        let momentumScore = 0;
-        if (pch5 >= 1 && pch5 <= 6) momentumScore += 40;
-        if (vol5 >= 10_000) momentumScore += 30;
-        if (ratio >= 1.3) momentumScore += 30;
-        momentumScore = Math.max(0, Math.min(100, Math.round(momentumScore)));
-
-        const reasons = [
-          liq >= 50_000 ? 'liq_ok' : null,
-          ageMinutes >= 60 ? 'age_ok' : null,
-          ratio >= 1.1 && ratio <= 3.5 ? 'ratio_ok' : null,
-          vol5 >= 10_000 ? 'vol_ok' : null,
-          pch5 <= 25 ? 'pch_safe' : null,
-        ].filter(Boolean) as string[];
-
-        const alert: SafeAlert = {
-          symbol: best.baseToken?.symbol ?? 'UNKNOWN',
-          tokenAddress: address,
-          pairAddress: best.pairAddress,
-          dexId: best.dexId,
-          url: best.url,
-          safetyScore,
-          momentumScore,
-          priceUsd,
-          pch5,
-          vol5,
-          vol1,
-          liq,
-          ratio,
-          reasons,
-        };
-
-        safeList.push(alert);
-
-        if (safetyScore >= 70 && momentumScore >= 60) {
-          candidates.push(alert);
-        } else {
-          const progress = Math.min(
-            100,
-            Math.round(((Math.min(safetyScore / 75, 1) + Math.min(momentumScore / 70, 1)) / 2) * 100)
-          );
-          waiting.push({ ...alert, confirmProgress: progress });
-          const existing = safeStateRef.current.get(best.pairAddress);
-          if (existing?.status === 'candidate') {
-            safeStateRef.current.delete(best.pairAddress);
-          }
-        }
-      });
-
-      const confirmed: SafeAlert[] = [];
-      candidates.forEach((item) => {
-        const state = safeStateRef.current.get(item.pairAddress);
-        if (!state || state.status === 'cooldown') {
-          const cooldownActive = state?.cooldownUntil && now < state.cooldownUntil;
-          if (cooldownActive) return;
-          safeStateRef.current.set(item.pairAddress, {
-            status: 'candidate',
-            startedAt: now,
-            peakPrice: item.priceUsd,
-            cooldownUntil: state?.cooldownUntil ?? 0,
-          });
-          return;
-        }
-
-        if (state.status === 'candidate') {
-          const peakPrice = Math.max(state.peakPrice, item.priceUsd);
-          const elapsed = now - state.startedAt;
-          const drawdown = peakPrice > 0 ? ((peakPrice - item.priceUsd) / peakPrice) * 100 : 0;
-          safeStateRef.current.set(item.pairAddress, {
-            ...state,
-            peakPrice,
-          });
-
-          if (elapsed >= 3 * 60 * 1000 && elapsed <= 10 * 60 * 1000) {
-            if (item.safetyScore >= 75 && item.momentumScore >= 60 && drawdown <= 20) {
-              safeStateRef.current.set(item.pairAddress, {
-                status: 'cooldown',
-                startedAt: now,
-                peakPrice,
-                cooldownUntil: now + 15 * 60 * 1000,
-              });
-              confirmed.push(item);
-            }
-          }
-        }
-      });
-
-      const summaryLines: string[] = [];
-      if (confirmed.length > 0) {
-        summaryLines.push('BUY terkonfirmasi:');
-        confirmed.forEach((alert) => {
-          summaryLines.push(
-            `${alert.symbol} (${alert.dexId.toUpperCase()}) | Safety ${alert.safetyScore} | Mom ${alert.momentumScore} | $${alert.priceUsd.toFixed(
-              6
-            )} | pch5 ${alert.pch5.toFixed(2)}%`
-          );
-        });
-      }
-
-      if (safeList.length > 0) {
-        summaryLines.push('');
-        summaryLines.push('Koin aman (top safety):');
-        safeList.slice(0, 10).forEach((alert) => {
-          summaryLines.push(
-            `${alert.symbol} | Safety ${alert.safetyScore} | Liq $${alert.liq.toFixed(0)} | pch5 ${alert.pch5.toFixed(2)}%`
-          );
-        });
-      }
-
-      if (waiting.length > 0) {
-        summaryLines.push('');
-        summaryLines.push('Waiting menuju confirm:');
-        waiting.slice(0, 10).forEach((alert) => {
-          summaryLines.push(
-            `${alert.symbol} | Safety ${alert.safetyScore} | Mom ${alert.momentumScore} | ${alert.confirmProgress ?? 0}%`
-          );
-        });
-      }
-
-      const summaryMessage = summaryLines.join('\n').trim();
-      if (summaryMessage) {
-        const hash = summaryMessage;
-        if (lastSafeTelegramRef.current !== hash) {
-          lastSafeTelegramRef.current = hash;
-          await fetch('/api/telegram/notify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: summaryMessage }),
-          });
-        }
-      }
-
-      setSafeAlerts(confirmed);
-      setSafeWaiting(
-        waiting
-          .sort((a, b) => b.safetyScore - a.safetyScore || b.momentumScore - a.momentumScore)
-          .slice(0, 50)
-      );
-      setSafeAll(safeList.sort((a, b) => b.safetyScore - a.safetyScore || b.liq - a.liq));
-    } catch (err: unknown) {
-      console.error(err);
-      setSafeError(err instanceof Error ? err.message : 'Gagal mengambil data DexScreener');
-    } finally {
-      setSafeLoading(false);
-    }
-  }, []);
 
   const handlePinSubmit = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
@@ -761,7 +442,6 @@ export default function HomePage() {
 
     fetchData();
     fetchNews();
-    fetchSafeTokens();
     const interval = setInterval(() => {
       fetchData();
       setNowTs(Date.now());
@@ -771,16 +451,11 @@ export default function HomePage() {
       fetchNews();
     }, 10 * 60 * 1000);
 
-    const safeInterval = setInterval(() => {
-      fetchSafeTokens();
-    }, 10 * 60 * 1000);
-
     return () => {
       clearInterval(interval);
       clearInterval(newsInterval);
-      clearInterval(safeInterval);
     };
-  }, [fetchData, fetchNews, fetchSafeTokens, isAuthorized]);
+  }, [fetchData, fetchNews, isAuthorized]);
 
   useEffect(() => {
     if (!isAuthorized) return undefined;
@@ -1123,25 +798,6 @@ export default function HomePage() {
     [scalpPage, scalpPageSize, scalpQuickList]
   );
 
-  const safePageSize = 10;
-  const totalSafePages = Math.max(1, Math.ceil(safeAll.length / safePageSize));
-
-  useEffect(() => {
-    setSafePage((prev) => Math.min(Math.max(1, prev), totalSafePages));
-  }, [totalSafePages]);
-
-  const displayedSafeAll = useMemo(
-    () => safeAll.slice((safePage - 1) * safePageSize, safePage * safePageSize),
-    [safeAll, safePage, safePageSize]
-  );
-
-  const potentialList = useMemo(
-    () =>
-      [...safeAll]
-        .sort((a, b) => b.momentumScore - a.momentumScore || b.safetyScore - a.safetyScore || b.vol5 - a.vol5)
-        .slice(0, 200),
-    [safeAll]
-  );
 
 
   const renderPumpMathCard = useCallback(
@@ -2075,173 +1731,6 @@ export default function HomePage() {
             </div>
           </section>
 
-          <section id="safe-detection" className="section-card accent-safe">
-            <div className="section-head">
-              <div>
-                <h3>INTI DETEKSI KOIN AMAN (SOLANA)</h3>
-                <p className="muted">
-                  Filter anti-noise untuk token Solana dari DexScreener. Monitoring aman, waiting, dan kandidat potensial di satu tempat.
-                </p>
-              </div>
-              <span className="badge badge-neutral">Safety + Momentum (longgar)</span>
-            </div>
-
-            {safeLoading ? (
-              <div className="empty-state small">Memuat kandidat aman...</div>
-            ) : safeError ? (
-              <div className="empty-state small">{safeError}</div>
-            ) : safeAlerts.length === 0 && safeWaiting.length === 0 && safeAll.length === 0 ? (
-              <div className="empty-state small">Belum ada kandidat “naik + aman”.</div>
-            ) : (
-              <>
-                {safeAlerts.length > 0 && (
-                  <div className="safe-table-wrap">
-                    <table className="safe-table">
-                      <thead>
-                        <tr>
-                          <th>Token (Confirmed)</th>
-                          <th>Skor</th>
-                          <th>Harga</th>
-                          <th>Performa 5m</th>
-                          <th>Volume/Liq</th>
-                          <th>Alasan lolos</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {safeAlerts.map((alert) => (
-                          <tr key={alert.pairAddress}>
-                            <td>
-                              <div className="safe-token">{alert.symbol}</div>
-                              <div className="safe-sub">{alert.dexId.toUpperCase()} • {alert.pairAddress.slice(0, 6)}...</div>
-                              <a className="safe-link" href={alert.url} target="_blank" rel="noreferrer">
-                                Buka DexScreener
-                              </a>
-                            </td>
-                            <td>
-                              <div className="safe-score">Safety {alert.safetyScore}</div>
-                              <div className="safe-sub">Momentum {alert.momentumScore}</div>
-                            </td>
-                            <td>
-                              <div className="safe-score">${alert.priceUsd.toFixed(6)}</div>
-                              <div className="safe-sub">Ratio {alert.ratio.toFixed(2)}</div>
-                            </td>
-                            <td>
-                              <div className="safe-score">{alert.pch5.toFixed(2)}%</div>
-                              <div className="safe-sub">Vol 5m {alert.vol5.toFixed(0)}</div>
-                            </td>
-                            <td>
-                              <div className="safe-score">${alert.liq.toFixed(0)}</div>
-                              <div className="safe-sub">Vol 1h {alert.vol1.toFixed(0)}</div>
-                            </td>
-                            <td>
-                              <div className="safe-reason">{alert.reasons.join(', ')}</div>
-                              <div className="safe-sub">{alert.tokenAddress.slice(0, 10)}...</div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                {safeWaiting.length > 0 && (
-                  <div className="safe-waiting">
-                    <div className="safe-waiting-title">Waiting list (menuju confirm)</div>
-                    <div className="safe-waiting-grid">
-                      {safeWaiting.map((item) => (
-                        <div key={item.pairAddress} className="safe-waiting-card">
-                          <div className="safe-waiting-head">
-                            <div className="safe-token">{item.symbol}</div>
-                            <div className="safe-score">Safety {item.safetyScore}</div>
-                          </div>
-                          <div className="safe-waiting-progress">
-                            Menuju confirm {item.confirmProgress ?? 0}%
-                          </div>
-                          <div className="safe-sub">Momentum {item.momentumScore} • {item.pch5.toFixed(2)}%</div>
-                          <div className="safe-sub">Liq ${item.liq.toFixed(0)} • Ratio {item.ratio.toFixed(2)}</div>
-                          <div className="safe-reason">{item.reasons.join(', ')}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {displayedSafeAll.length > 0 && (
-                  <div className="safe-all-block">
-                    <div className="safe-waiting-title">Daftar semua koin aman</div>
-                    <div className="safe-table-wrap">
-                      <table className="safe-table">
-                        <thead>
-                          <tr>
-                            <th>Token</th>
-                            <th>Safety</th>
-                            <th>Harga</th>
-                            <th>Performa 5m</th>
-                            <th>Liquidity</th>
-                            <th>Info</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {displayedSafeAll.map((alert) => (
-                            <tr key={`safe-${alert.pairAddress}`}>
-                              <td>
-                                <div className="safe-token">{alert.symbol}</div>
-                                <div className="safe-sub">
-                                  {alert.dexId.toUpperCase()} • {alert.pairAddress.slice(0, 6)}...
-                                </div>
-                              </td>
-                              <td>
-                                <div className="safe-score">{alert.safetyScore}</div>
-                                <div className="safe-sub">Ratio {alert.ratio.toFixed(2)}</div>
-                              </td>
-                              <td>
-                                <div className="safe-score">${alert.priceUsd.toFixed(6)}</div>
-                                <div className="safe-sub">Vol 1h {alert.vol1.toFixed(0)}</div>
-                              </td>
-                              <td>
-                                <div className="safe-score">{alert.pch5.toFixed(2)}%</div>
-                                <div className="safe-sub">Vol 5m {alert.vol5.toFixed(0)}</div>
-                              </td>
-                              <td>
-                                <div className="safe-score">${alert.liq.toFixed(0)}</div>
-                                <div className="safe-sub">{alert.tokenAddress.slice(0, 10)}...</div>
-                              </td>
-                              <td>
-                                <div className="safe-reason">{alert.reasons.join(', ')}</div>
-                                <a className="safe-link" href={alert.url} target="_blank" rel="noreferrer">
-                                  Buka DexScreener
-                                </a>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-
-                      <div className="safe-pagination">
-                        <button
-                          className="safe-page-btn"
-                          onClick={() => setSafePage((p) => Math.max(1, p - 1))}
-                          disabled={safePage === 1}
-                        >
-                          &larr; Sebelumnya
-                        </button>
-                        <div className="safe-page-indicator">
-                          Halaman {safePage} / {totalSafePages}
-                        </div>
-                        <button
-                          className="safe-page-btn"
-                          onClick={() => setSafePage((p) => Math.min(totalSafePages, p + 1))}
-                          disabled={safePage === totalSafePages}
-                        >
-                          Selanjutnya &rarr;
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </section>
 
           <section id="radar" className="side-section section-card accent-radar">
             <h3>Radar Peringatan Pump</h3>
