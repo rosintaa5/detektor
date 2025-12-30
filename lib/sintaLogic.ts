@@ -75,12 +75,12 @@ function computeSwingLevels(
     return null;
   }
 
-  // TP diarahkan ke area tengah-atas range, atau minimal RR 2.6x.
-  const tpFromRange = entry + baseRange * 0.65;
-  const tpFromRisk = entry + riskAmt * 2.6;
+  // TP diarahkan ke area atas range, atau minimal RR 3.0x.
+  const tpFromRange = entry + baseRange * 0.8;
+  const tpFromRisk = entry + riskAmt * 3;
   let tp = Math.max(tpFromRange, tpFromRisk);
   if (tp <= entry) {
-    tp = entry + Math.max(riskAmt * 2.6, baseRange * 0.5);
+    tp = entry + Math.max(riskAmt * 3, baseRange * 0.7);
   }
 
   if (!isFinite(tp) || tp <= entry) {
