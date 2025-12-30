@@ -1993,92 +1993,16 @@ export default function HomePage() {
           <section id="pump-system" className="section-card accent-math">
             <div className="section-head">
               <div>
-                <h3>Rumus & Deteksi Pump Tinggi (Indodax)</h3>
+                <h3>Deteksi Pump Tinggi (Indodax)</h3>
                 <p className="muted">
-                  Ringkasan desain sistem + hasil deteksi live berdasarkan data Lab Hitung Mau Pump.
+                  Hasil deteksi live berdasarkan data Lab Hitung Mau Pump.
                 </p>
               </div>
-              <span className="badge badge-neutral">Panduan data & scoring</span>
-            </div>
-
-            <div className="pump-system-grid">
-              <div className="pump-system-card">
-                <div className="pump-system-title">API Indodax yang relevan</div>
-                <ul>
-                  <li>Semua ticker: <span>https://indodax.com/api/tickers</span></li>
-                  <li>Ticker per pair: <span>https://indodax.com/api/&lt;pair&gt;/ticker</span></li>
-                  <li>Trades per pair: <span>https://indodax.com/api/&lt;pair&gt;/trades</span></li>
-                  <li>Depth per pair: <span>https://indodax.com/api/&lt;pair&gt;/depth</span></li>
-                </ul>
-                <div className="pump-system-note">
-                  Trades = tekanan beli real. Depth = likuiditas & jalur harga (vacuum).
-                </div>
-              </div>
-
-              <div className="pump-system-card">
-                <div className="pump-system-title">Definisi “pump tinggi”</div>
-                <ul>
-                  <li>Return naik ≥ 3% dalam 5 menit.</li>
-                  <li>Volume window ≥ 3× baseline 30 menit.</li>
-                  <li>Momentum berlanjut (bukan wick sekali).</li>
-                </ul>
-                <div className="pump-system-note">
-                  Tanpa definisi operasional, prediksi akan bias.
-                </div>
-              </div>
-
-              <div className="pump-system-card">
-                <div className="pump-system-title">Arsitektur sistem</div>
-                <ol>
-                  <li>Universe & Filter: buang pair sepi/spread terlalu lebar.</li>
-                  <li>Collector: trades (1–2s), depth (2–5s), ticker (15–60s).</li>
-                  <li>Feature Engine: return, vol z-score, imbalance, spread.</li>
-                  <li>Scoring Engine: rule-based → pump_score.</li>
-                  <li>Risk Manager: hindari entry puncak (manual/auto).</li>
-                </ol>
-              </div>
-
-              <div className="pump-system-card">
-                <div className="pump-system-title">Perhitungan inti</div>
-                <ul>
-                  <li>Return 1m: r1m = ln(Pt / Pt-1m)</li>
-                  <li>Acceleration: a = r1m - r5m</li>
-                  <li>Volume z-score: zV = (VW - μ) / σ</li>
-                  <li>Imbalance: I = (B - A) / (B + A)</li>
-                  <li>Cost(+5%): biaya sapu ask hingga target</li>
-                </ul>
-                <div className="pump-system-note">
-                  Pump tinggi = buy flow besar + cost kecil (jalur orderbook kosong).
-                </div>
-              </div>
-
-              <div className="pump-system-card">
-                <div className="pump-system-title">Pump Score (0–100)</div>
-                <ul>
-                  <li>+30 jika zV &gt; 3</li>
-                  <li>+20 jika I &gt; 0.2</li>
-                  <li>+20 jika breakout valid</li>
-                  <li>+15 jika Cost(+5%) kecil vs BuyFlow</li>
-                  <li>+15 jika spread kecil</li>
-                </ul>
-                <div className="pump-system-note">
-                  0–40 noise, 40–70 watchlist, 70–100 kandidat kuat.
-                </div>
-              </div>
-
-              <div className="pump-system-card">
-                <div className="pump-system-title">Pitfall yang wajib dihindari</div>
-                <ul>
-                  <li>Spoofing orderbook → cek persist 10–30 detik.</li>
-                  <li>Wash trading → volume harus sejalan return.</li>
-                  <li>Likuiditas tipis → rawan dump.</li>
-                  <li>Rate limit → jangan polling agresif.</li>
-                </ul>
-              </div>
+              <span className="badge badge-neutral">Deteksi live</span>
             </div>
 
             <div className="pump-system-detect">
-              <div className="pump-system-title">Deteksi live (seperti Lab Pump)</div>
+              <div className="pump-system-title">Kandidat pump tinggi</div>
               {pumpMathList.length === 0 ? (
                 <div className="empty-state small">Belum ada kandidat pump yang terdeteksi.</div>
               ) : (
