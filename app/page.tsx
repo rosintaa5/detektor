@@ -2002,8 +2002,8 @@ export default function HomePage() {
             </div>
 
             <div className="pump-system-detect">
-              <div className="pump-system-title">Kandidat pump tinggi (TP besar)</div>
-              {pumpMathList.filter((item) => item.upsidePct >= 8 && item.confidencePct >= 60 && item.rrLive >= 1.6).length === 0 ? (
+              <div className="pump-system-title">Kandidat pump tinggi (termasuk persen kecil)</div>
+              {pumpMathList.filter((item) => item.upsidePct >= 5 && item.rrLive >= 1.3).length === 0 ? (
                 <div className="empty-state small">Belum ada kandidat pump tinggi yang memenuhi syarat.</div>
               ) : (
                 <div className="pump-system-table-wrap">
@@ -2020,11 +2020,11 @@ export default function HomePage() {
                     </thead>
                     <tbody>
                       {pumpMathList
-                        .filter((item) => item.upsidePct >= 8 && item.confidencePct >= 60 && item.rrLive >= 1.6)
-                        .slice(0, 8)
+                        .filter((item) => item.upsidePct >= 5 && item.rrLive >= 1.3)
+                        .slice(0, 12)
                         .map((item) => {
                         const shouldWaitCorrection = item.entryGapPct > 3 && item.heatPct < 70;
-                        const action = item.isLate || shouldWaitCorrection ? 'Tunggu koreksi' : 'Entry sekarang';
+                        const action = item.isLate || shouldWaitCorrection ? 'Waiting' : 'Entry sekarang';
                         const reason = item.isLate || shouldWaitCorrection
                           ? `Gap ${item.entryGapPct.toFixed(1)}% • Heat ${item.heatPct.toFixed(1)}%`
                           : `Momentum ${item.momentumPct.toFixed(1)}% • RR ${item.rrLive.toFixed(2)}x`;
