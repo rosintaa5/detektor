@@ -1031,6 +1031,10 @@ export default function HomePage() {
           entryGapPct,
           heatPct,
           momentumPct,
+          volumeScore,
+          rrScore,
+          setupScore,
+          momentumScore,
           score,
           bias,
           actionLine,
@@ -1176,6 +1180,9 @@ export default function HomePage() {
       const supportLine = `Pendukung: ${item.structureNote}; ${item.btcDrag}; Upside ${item.upsidePct.toFixed(
         1
       )}% vs buffer ${item.downsidePct.toFixed(1)}%.`;
+      const formulaLine = `Rumus skor: Vol ${item.volumeScore.toFixed(0)} + RR ${item.rrScore.toFixed(
+        0
+      )} + Setup ${item.setupScore.toFixed(0)} + Mom ${item.momentumScore.toFixed(0)}${item.isLate ? ' - Late' : ''}.`;
       const patternLine = `Pola chart: ${item.patternLabel}. ${item.patternNote}`;
 
       return (
@@ -1259,6 +1266,7 @@ export default function HomePage() {
                 <div className="verdict-line">{tpLine}</div>
                 <div className="verdict-line">{supportLine}</div>
                 <div className="verdict-line">{entryReason}</div>
+                <div className="verdict-line">{formulaLine}</div>
                 <div className="verdict-line verdict-caution">{clLine}</div>
                 <div className="verdict-line">{patternLine}</div>
                 <div className="verdict-line">{buyLine}</div>
@@ -2014,6 +2022,7 @@ export default function HomePage() {
                         <th>Confidence</th>
                         <th>Entry</th>
                         <th>Keputusan</th>
+                        <th>Rumus skor</th>
                         <th>Alasan singkat</th>
                       </tr>
                     </thead>
@@ -2041,6 +2050,13 @@ export default function HomePage() {
                             <td>
                               <div className="safe-score">{action}</div>
                               <div className="safe-sub">TP {formatPrice(item.coin.tp)}</div>
+                            </td>
+                            <td>
+                              <div className="safe-reason">
+                                Vol {item.volumeScore.toFixed(0)} + RR {item.rrScore.toFixed(0)} + Setup{' '}
+                                {item.setupScore.toFixed(0)} + Mom {item.momentumScore.toFixed(0)}
+                              </div>
+                              <div className="safe-sub">Skor total {item.score}</div>
                             </td>
                             <td>
                               <div className="safe-reason">{reason}</div>
