@@ -2010,9 +2010,9 @@ export default function HomePage() {
             </div>
 
             <div className="pump-system-detect">
-              <div className="pump-system-title">Kandidat pump tinggi</div>
-              {pumpMathList.length === 0 ? (
-                <div className="empty-state small">Belum ada kandidat pump yang terdeteksi.</div>
+              <div className="pump-system-title">Kandidat pump tinggi (TP besar)</div>
+              {pumpMathList.filter((item) => item.upsidePct >= 12 && item.confidencePct >= 70 && item.rrLive >= 2).length === 0 ? (
+                <div className="empty-state small">Belum ada kandidat pump tinggi dengan TP besar.</div>
               ) : (
                 <div className="pump-system-table-wrap">
                   <table className="pump-system-table">
@@ -2027,7 +2027,10 @@ export default function HomePage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {pumpMathList.slice(0, 8).map((item) => {
+                      {pumpMathList
+                        .filter((item) => item.upsidePct >= 12 && item.confidencePct >= 70 && item.rrLive >= 2)
+                        .slice(0, 8)
+                        .map((item) => {
                         const shouldWaitCorrection = item.entryGapPct > 3 && item.heatPct < 70;
                         const action = item.isLate || shouldWaitCorrection ? 'Tunggu koreksi' : 'Entry sekarang';
                         const reason = item.isLate || shouldWaitCorrection
