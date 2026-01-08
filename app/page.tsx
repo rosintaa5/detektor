@@ -172,6 +172,21 @@ interface TopPick {
   horizon: string;
 }
 
+interface ScalpQuickItem {
+  pair: string;
+  price: number;
+  liquidity: string;
+  confidence: number;
+  rrLive: number;
+  upsidePct: number;
+  priorityScore: number;
+  tpChance: number;
+  tp1: { price: number; pct: number };
+  tp2: { price: number; pct: number };
+  reasonShort: string;
+  entryNote: string;
+}
+
 export default function HomePage() {
   const [coins, setCoins] = useState<CoinSignal[]>([]);
   const [selected, setSelected] = useState<CoinSignal | null>(null);
@@ -195,6 +210,12 @@ export default function HomePage() {
   const [orderError, setOrderError] = useState<string | null>(null);
   const [orderLastUpdate, setOrderLastUpdate] = useState<number | null>(null);
   const [orderCooldownUntil, setOrderCooldownUntil] = useState<number | null>(null);
+  const [scalpPage, setScalpPage] = useState(1);
+  const [safeAlerts, setSafeAlerts] = useState<SafeAlert[]>([]);
+  const [safeWaiting, setSafeWaiting] = useState<SafeAlert[]>([]);
+  const [safeAll, setSafeAll] = useState<SafeAlert[]>([]);
+  const [safeLoading, setSafeLoading] = useState(false);
+  const [safeError, setSafeError] = useState<string | null>(null);
   const lastLiqRef = useRef<Map<string, number>>(new Map());
   const lastSafeTelegramRef = useRef<string | null>(null);
   const safeStateRef = useRef<
@@ -856,7 +877,7 @@ export default function HomePage() {
     setPredictions(buildWeeklyPredictions(coins, news));
   }, [buildWeeklyPredictions, coins, news]);
 
-  const computeTpTargets = (coin: CoinSignal) => {
+  const computeTpTargets = useCallback((coin: CoinSignal) => {
     const diff = coin.tp - coin.entry;
     const tp1 = coin.entry + diff * 0.4;
     const tp2 = coin.entry + diff * 0.7;
@@ -866,7 +887,55 @@ export default function HomePage() {
       price: tp,
       pct: ((tp - coin.entry) / coin.entry) * 100,
     }));
-  };
+  }, []);
+
+  const scalpPageSize = 8;
+
+  const scalpQuickList = useMemo<ScalpQuickItem[]>(() => {
+    return coins
+      .filter((coin) => coin.last > 0 && coin.last <= 100 && coin.signal !== 'none')
+      .map((coin) => {
+        const [tp1, tp2] = computeTpTargets(coin);
+        const signalScore = coin.signal === 'strong_buy' ? 30 : coin.signal === 'buy' ? 20 : 12;
+        const priceScore = coin.last <= 50 ? 18 : 10;
+        const rrScore = Math.min(30, coin.rr * 10);
+        const upsideScore = Math.min(20, coin.tpFromEntryPct);
+        const priorityScore = Math.round(signalScore + priceScore + rrScore + upsideScore);
+        const confidenceBase = Math.min(95, Math.max(55, priorityScore));
+        const tpChance = Math.min(95, Math.round(35 + coin.rr * 12 + coin.tpFromEntryPct / 2));
+        const liquidity = `${formatPrice(coin.volIdr)} IDR`;
+
+        return {
+          pair: coin.pair,
+          price: coin.last,
+          liquidity,
+          confidence: confidenceBase,
+          rrLive: coin.rr,
+          upsidePct: coin.tpFromEntryPct,
+          priorityScore,
+          tpChance,
+          tp1,
+          tp2,
+          reasonShort: coin.reasons[0] ?? 'Momentum stabil dengan risk-reward sehat.',
+          entryNote: `Entry ${formatPrice(coin.entry)} • SL ${formatPrice(coin.sl)}`,
+        };
+      })
+      .sort((a, b) => b.priorityScore - a.priorityScore);
+  }, [coins, computeTpTargets, formatPrice]);
+
+  const totalScalpPages = useMemo(
+    () => Math.max(1, Math.ceil(scalpQuickList.length / scalpPageSize)),
+    [scalpQuickList.length, scalpPageSize]
+  );
+
+  const displayedScalp = useMemo(() => {
+    const start = (scalpPage - 1) * scalpPageSize;
+    return scalpQuickList.slice(start, start + scalpPageSize);
+  }, [scalpPage, scalpQuickList]);
+
+  useEffect(() => {
+    setScalpPage((prev) => Math.min(Math.max(1, prev), totalScalpPages));
+  }, [totalScalpPages]);
 
   const predictionMap = useMemo(() => {
     const map = new Map<string, Prediction>();
