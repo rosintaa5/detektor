@@ -14,6 +14,8 @@ type PredictionDirection = 'bullish' | 'bearish' | 'neutral';
 
 const PIN_STORAGE_KEY = 'sinta-pin-authorized';
 
+const PIN_STORAGE_KEY = 'sinta-pin-authorized';
+
 interface NewsItem {
   id: string;
   title: string;
@@ -28,6 +30,67 @@ interface NewsItem {
 interface NewsResponse {
   news: NewsItem[];
 }
+
+interface DexPair {
+  pairAddress: string;
+  dexId: string;
+  url: string;
+  priceUsd?: string;
+  pairCreatedAt?: number;
+  liquidity?: {
+    usd?: number;
+  };
+  volume?: {
+    m5?: number;
+    h1?: number;
+  };
+  priceChange?: {
+    m5?: number;
+  };
+  txns?: {
+    m5?: {
+      buys?: number;
+      sells?: number;
+    };
+  };
+  baseToken?: {
+    symbol?: string;
+    address?: string;
+  };
+}
+
+interface DexResponse {
+  pairs?: DexPair[];
+}
+
+interface DexBoostToken {
+  tokenAddress?: string;
+  address?: string;
+  chainId?: string;
+  token?: {
+    address?: string;
+  };
+}
+
+interface SafeAlert {
+  symbol: string;
+  tokenAddress: string;
+  pairAddress: string;
+  dexId: string;
+  url: string;
+  safetyScore: number;
+  momentumScore: number;
+  confirmProgress?: number;
+  priceUsd: number;
+  pch5: number;
+  vol5: number;
+  vol1: number;
+  liq: number;
+  ratio: number;
+  reasons: string[];
+}
+
+
 
 interface Prediction {
   asset: string;
@@ -50,6 +113,49 @@ interface PumpWarning {
   time: number;
   label: string;
   note: string;
+}
+
+interface DepthBookResponse {
+  buy: Array<[string | number, string | number]>;
+  sell: Array<[string | number, string | number]>;
+}
+
+interface TradeItem {
+  price: string | number;
+  amount: string | number;
+  type: 'buy' | 'sell';
+}
+
+interface PumpOrderSignal {
+  pair: string;
+  last: number;
+  score: number;
+  buySellRatio: number;
+  buyRatioTrades: number;
+  buyRatioVolume: number;
+  spreadPct: number;
+  topBuyPrice: number;
+  topSellPrice: number;
+  wallNote: string;
+  entry: number;
+  tp: number;
+  sl: number;
+  tradeHint: string;
+  action: string;
+  reason: string;
+}
+
+interface SummariesResponse {
+  tickers?: Record<
+    string,
+    {
+      last?: string | number;
+      high?: string | number;
+      low?: string | number;
+      vol_idr?: string | number;
+      vol_id?: string | number;
+    }
+  >;
 }
 
 interface TopPick {
@@ -86,6 +192,24 @@ export default function HomePage() {
   const [pinError, setPinError] = useState<string | null>(null);
   const lastWarningStateRef = useRef<Map<string, string>>(new Map());
   const trackedPairsRef = useRef<Map<string, number>>(new Map());
+  const [orderSignals, setOrderSignals] = useState<PumpOrderSignal[]>([]);
+  const [orderLoading, setOrderLoading] = useState(false);
+  const [orderError, setOrderError] = useState<string | null>(null);
+  const [orderLastUpdate, setOrderLastUpdate] = useState<number | null>(null);
+  const [orderCooldownUntil, setOrderCooldownUntil] = useState<number | null>(null);
+  const lastLiqRef = useRef<Map<string, number>>(new Map());
+  const lastSafeTelegramRef = useRef<string | null>(null);
+  const safeStateRef = useRef<
+    Map<
+      string,
+      {
+        status: 'candidate' | 'confirmed' | 'cooldown';
+        startedAt: number;
+        peakPrice: number;
+        cooldownUntil: number;
+      }
+    >
+  >(new Map());
 
   const formatter = useMemo(
     () =>
@@ -150,6 +274,8 @@ export default function HomePage() {
     },
     [nowTs]
   );
+
+  // Orderbook analysis removed.
 
   const buildWarningGuidance = useCallback(
     (coin: CoinSignal) => {
@@ -442,23 +568,285 @@ export default function HomePage() {
     }
   }, []);
 
+  const fetchSafeTokens = useCallback(async () => {
+    try {
+      setSafeLoading(true);
+      setSafeError(null);
+      const boostRes = await fetch('/api/dexscreener/boosts');
+      if (!boostRes.ok) {
+        throw new Error(`Gagal mengambil DexScreener boosts (${boostRes.status})`);
+      }
+      const boostData = (await boostRes.json()) as DexBoostToken[] | { tokens?: DexBoostToken[]; data?: DexBoostToken[] };
+      const boostList = Array.isArray(boostData) ? boostData : boostData.tokens ?? boostData.data ?? [];
+      const tokenAddresses = boostList
+        .filter((item) => !item.chainId || item.chainId.toLowerCase() === 'solana')
+        .map((item) => item.tokenAddress ?? item.address ?? item.token?.address ?? '')
+        .filter(Boolean)
+        .slice(0, 30);
+
+      if (tokenAddresses.length === 0) {
+        setSafeAlerts([]);
+        setSafeWaiting([]);
+        setSafeAll([]);
+        return;
+      }
+
+      const now = Date.now();
+
+      const pairResults = await Promise.allSettled(
+        tokenAddresses.map(async (address) => {
+          const res = await fetch(`/api/dexscreener/token-pairs/${address}`);
+          if (!res.ok) {
+            throw new Error(`Token pairs ${address} ${res.status}`);
+          }
+          const data = (await res.json()) as DexPair[] | DexResponse;
+          const pairs = Array.isArray(data) ? data : data.pairs ?? [];
+          return { address, pairs };
+        })
+      );
+
+      const candidates: SafeAlert[] = [];
+      const waiting: SafeAlert[] = [];
+      const safeList: SafeAlert[] = [];
+      pairResults.forEach((result) => {
+        if (result.status !== 'fulfilled') return;
+        const { pairs, address } = result.value;
+        const best = [...pairs].sort((a, b) => {
+          const volA = a.volume?.m5 ?? 0;
+          const volB = b.volume?.m5 ?? 0;
+          if (volB !== volA) return volB - volA;
+          const liqA = a.liquidity?.usd ?? 0;
+          const liqB = b.liquidity?.usd ?? 0;
+          return liqB - liqA;
+        })[0];
+
+        if (!best) return;
+        const liq = best.liquidity?.usd ?? 0;
+        const vol5 = best.volume?.m5 ?? 0;
+        const vol1 = best.volume?.h1 ?? 0;
+        const pch5 = best.priceChange?.m5 ?? 0;
+        const buys = best.txns?.m5?.buys ?? 0;
+        const sells = best.txns?.m5?.sells ?? 0;
+        const ratio = buys / Math.max(sells, 1);
+        const createdAt = best.pairCreatedAt ?? 0;
+        const ageMinutes = createdAt > 0 ? (now - createdAt) / (60 * 1000) : 0;
+        const priceUsd = Number(best.priceUsd ?? 0);
+
+        if (liq < 25_000) return;
+        if (vol5 < 5_000) return;
+        if (createdAt === 0 || ageMinutes < 60) return;
+        if (pch5 > 35) return;
+        if (ratio > 12) return;
+
+        const lastLiq = lastLiqRef.current.get(best.pairAddress) ?? liq;
+        if (liq < lastLiq * 0.9) {
+          lastLiqRef.current.set(best.pairAddress, liq);
+          return;
+        }
+        lastLiqRef.current.set(best.pairAddress, liq);
+
+        let safetyScore = 0;
+        if (liq >= 250_000) safetyScore += 40;
+        else if (liq >= 100_000) safetyScore += 30;
+        else if (liq >= 50_000) safetyScore += 20;
+        else if (liq >= 25_000) safetyScore += 10;
+
+        if (ratio >= 1.1 && ratio <= 3.5) safetyScore += 30;
+        else if ((ratio >= 1.0 && ratio < 1.1) || (ratio > 3.5 && ratio <= 5.0)) safetyScore += 15;
+
+        if (vol1 >= 500_000) safetyScore += 20;
+        else if (vol1 >= 200_000) safetyScore += 10;
+        else if (vol1 >= 80_000) safetyScore += 5;
+
+        if (ageMinutes >= 7 * 24 * 60) safetyScore += 10;
+        else if (ageMinutes >= 24 * 60) safetyScore += 5;
+
+        safetyScore = Math.max(0, Math.min(100, Math.round(safetyScore)));
+
+        let momentumScore = 0;
+        if (pch5 >= 1 && pch5 <= 6) momentumScore += 40;
+        if (vol5 >= 10_000) momentumScore += 30;
+        if (ratio >= 1.3) momentumScore += 30;
+        momentumScore = Math.max(0, Math.min(100, Math.round(momentumScore)));
+
+        const reasons = [
+          liq >= 50_000 ? 'liq_ok' : null,
+          ageMinutes >= 60 ? 'age_ok' : null,
+          ratio >= 1.1 && ratio <= 3.5 ? 'ratio_ok' : null,
+          vol5 >= 10_000 ? 'vol_ok' : null,
+          pch5 <= 25 ? 'pch_safe' : null,
+        ].filter(Boolean) as string[];
+
+        const alert: SafeAlert = {
+          symbol: best.baseToken?.symbol ?? 'UNKNOWN',
+          tokenAddress: address,
+          pairAddress: best.pairAddress,
+          dexId: best.dexId,
+          url: best.url,
+          safetyScore,
+          momentumScore,
+          priceUsd,
+          pch5,
+          vol5,
+          vol1,
+          liq,
+          ratio,
+          reasons,
+        };
+
+        safeList.push(alert);
+
+        if (safetyScore >= 70 && momentumScore >= 60) {
+          candidates.push(alert);
+        } else {
+          const progress = Math.min(
+            100,
+            Math.round(((Math.min(safetyScore / 75, 1) + Math.min(momentumScore / 70, 1)) / 2) * 100)
+          );
+          waiting.push({ ...alert, confirmProgress: progress });
+          const existing = safeStateRef.current.get(best.pairAddress);
+          if (existing?.status === 'candidate') {
+            safeStateRef.current.delete(best.pairAddress);
+          }
+        }
+      });
+
+      const confirmed: SafeAlert[] = [];
+      candidates.forEach((item) => {
+        const state = safeStateRef.current.get(item.pairAddress);
+        if (!state || state.status === 'cooldown') {
+          const cooldownActive = state?.cooldownUntil && now < state.cooldownUntil;
+          if (cooldownActive) return;
+          safeStateRef.current.set(item.pairAddress, {
+            status: 'candidate',
+            startedAt: now,
+            peakPrice: item.priceUsd,
+            cooldownUntil: state?.cooldownUntil ?? 0,
+          });
+          return;
+        }
+
+        if (state.status === 'candidate') {
+          const peakPrice = Math.max(state.peakPrice, item.priceUsd);
+          const elapsed = now - state.startedAt;
+          const drawdown = peakPrice > 0 ? ((peakPrice - item.priceUsd) / peakPrice) * 100 : 0;
+          safeStateRef.current.set(item.pairAddress, {
+            ...state,
+            peakPrice,
+          });
+
+          if (elapsed >= 3 * 60 * 1000 && elapsed <= 10 * 60 * 1000) {
+            if (item.safetyScore >= 75 && item.momentumScore >= 60 && drawdown <= 20) {
+              safeStateRef.current.set(item.pairAddress, {
+                status: 'cooldown',
+                startedAt: now,
+                peakPrice,
+                cooldownUntil: now + 15 * 60 * 1000,
+              });
+              confirmed.push(item);
+            }
+          }
+        }
+      });
+
+      const summaryLines: string[] = [];
+      if (confirmed.length > 0) {
+        summaryLines.push('BUY terkonfirmasi:');
+        confirmed.forEach((alert) => {
+          summaryLines.push(
+            `${alert.symbol} (${alert.dexId.toUpperCase()}) | Safety ${alert.safetyScore} | Mom ${alert.momentumScore} | $${alert.priceUsd.toFixed(
+              6
+            )} | pch5 ${alert.pch5.toFixed(2)}%`
+          );
+        });
+      }
+
+      if (safeList.length > 0) {
+        summaryLines.push('');
+        summaryLines.push('Koin aman (top safety):');
+        safeList.slice(0, 10).forEach((alert) => {
+          summaryLines.push(
+            `${alert.symbol} | Safety ${alert.safetyScore} | Liq $${alert.liq.toFixed(0)} | pch5 ${alert.pch5.toFixed(2)}%`
+          );
+        });
+      }
+
+      if (waiting.length > 0) {
+        summaryLines.push('');
+        summaryLines.push('Waiting menuju confirm:');
+        waiting.slice(0, 10).forEach((alert) => {
+          summaryLines.push(
+            `${alert.symbol} | Safety ${alert.safetyScore} | Mom ${alert.momentumScore} | ${alert.confirmProgress ?? 0}%`
+          );
+        });
+      }
+
+      const summaryMessage = summaryLines.join('\n').trim();
+      if (summaryMessage) {
+        if (lastSafeTelegramRef.current !== summaryMessage) {
+          lastSafeTelegramRef.current = summaryMessage;
+          await fetch('/api/telegram/notify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: summaryMessage }),
+          });
+        }
+      }
+
+      setSafeAlerts(confirmed);
+      setSafeWaiting(
+        waiting
+          .sort((a, b) => b.safetyScore - a.safetyScore || b.momentumScore - a.momentumScore)
+          .slice(0, 50)
+      );
+      setSafeAll(safeList.sort((a, b) => b.safetyScore - a.safetyScore || b.liq - a.liq));
+    } catch (err: unknown) {
+      console.error(err);
+      setSafeError(err instanceof Error ? err.message : 'Gagal mengambil data DexScreener');
+    } finally {
+      setSafeLoading(false);
+    }
+  }, []);
+
+
+  const handlePinSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+
+      if (pinInput.trim() === '111111') {
+        setIsAuthorized(true);
+        localStorage.setItem(PIN_STORAGE_KEY, 'true');
+        setPinError(null);
+      } else {
+        setPinError('PIN salah, coba lagi.');
+      }
+    },
+    [pinInput]
+  );
+
   useEffect(() => {
     if (!isAuthorized) return undefined;
 
     fetchData();
     fetchNews();
+    fetchSafeTokens();
     const interval = setInterval(() => {
       fetchData();
       setNowTs(Date.now());
-    }, 15_000);
+    }, 10 * 60 * 1000);
 
     const newsInterval = setInterval(() => {
       fetchNews();
-    }, 5 * 60 * 1000);
+    }, 10 * 60 * 1000);
+
+    const safeInterval = setInterval(() => {
+      fetchSafeTokens();
+    }, 10 * 60 * 1000);
 
     return () => {
       clearInterval(interval);
       clearInterval(newsInterval);
+      clearInterval(safeInterval);
     };
   }, [fetchData, fetchNews, isAuthorized]);
 
@@ -1775,6 +2163,87 @@ export default function HomePage() {
               </div>
             )}
           </section>
+
+          <section id="quick-scalp" className="section-card accent-scalp">
+            <div className="section-head">
+              <div>
+                <h3>SCALP COIN</h3>
+                <p className="muted">
+                  Tabel live koin murah (&lt; Rp100) ber-confidence tinggi, diurut otomatis berdasarkan skor akurat; gunakan
+                  pagination untuk jelajah banyak kandidat.
+                </p>
+              </div>
+              <span className="badge badge-neutral">Filter harga &lt; 100</span>
+            </div>
+
+            {scalpQuickList.length === 0 ? (
+              <div className="empty-state small">Belum ada koin murah yang valid untuk scalp cepat.</div>
+            ) : (
+              <div className="scalp-table-wrap">
+                <table className="scalp-table">
+                  <thead>
+                    <tr>
+                      <th>Prioritas</th>
+                      <th>Pair &amp; harga</th>
+                      <th>Skor</th>
+                      <th>Tembus TP</th>
+                      <th>Alasan singkat</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayedScalp.map((item, idx) => {
+                      const rank = (scalpPage - 1) * scalpPageSize + idx + 1;
+                      return (
+                        <tr key={item.pair}>
+                          <td>
+                            <div className="scalp-rank">#{rank}</div>
+                            <div className="scalp-rank-sub">Skor prioritas {item.priorityScore}</div>
+                          </td>
+                          <td>
+                            <div className="scalp-pair">{item.pair.toUpperCase()}</div>
+                            <div className="scalp-sub">Harga {formatPrice(item.price)} • Likuiditas {item.liquidity}</div>
+                          </td>
+                          <td>
+                            <div className="scalp-score">{item.confidence}% benar</div>
+                            <div className="scalp-sub">RR {item.rrLive.toFixed(2)}x • Upside {item.upsidePct.toFixed(1)}%</div>
+                          </td>
+                          <td>
+                            <div className="scalp-score">{item.tpChance}%</div>
+                            <div className="scalp-sub">TP1 {formatPrice(item.tp1.price)} ({item.tp1.pct.toFixed(1)}%) • TP2 {formatPrice(item.tp2.price)} ({item.tp2.pct.toFixed(1)}%)</div>
+                          </td>
+                          <td>
+                            <div className="scalp-reason">{item.reasonShort}</div>
+                            <div className="scalp-sub">{item.entryNote}</div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                <div className="scalp-pagination">
+                  <button
+                    className="scalp-page-btn"
+                    onClick={() => setScalpPage((p) => Math.max(1, p - 1))}
+                    disabled={scalpPage === 1}
+                  >
+                    &larr; Sebelumnya
+                  </button>
+                  <div className="scalp-page-indicator">
+                    Halaman {scalpPage} / {totalScalpPages}
+                  </div>
+                  <button
+                    className="scalp-page-btn"
+                    onClick={() => setScalpPage((p) => Math.min(totalScalpPages, p + 1))}
+                    disabled={scalpPage === totalScalpPages}
+                  >
+                    Selanjutnya &rarr;
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+
           </div>
         </div>
       </div>

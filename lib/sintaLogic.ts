@@ -42,13 +42,15 @@ interface SwingLevels {
   rr: number;
 }
 
-function computeSwingLevels(last: number, high: number, low: number): SwingLevels | null {
-  if (!isFinite(last) || last <= 0) return null;
-
-  const baseRange = high > low ? high - low : last * 0.03;
-  let atrApprox = baseRange / 1.8;
-  if (!isFinite(atrApprox) || atrApprox <= 0) {
-    atrApprox = last * 0.03;
+function computeSwingLevels(
+  last: number,
+  high: number,
+  low: number,
+  posInRange: number,
+  moveFromLowPct: number
+): SwingLevels | null {
+  if (!isFinite(last) || last <= 0 || !isFinite(high) || !isFinite(low) || high <= 0 || low <= 0) {
+    return null;
   }
 
   const dipAmount = Math.min(last * 0.005, atrApprox * 0.3); // small pullback
@@ -65,29 +67,25 @@ function computeSwingLevels(last: number, high: number, low: number): SwingLevel
   let rewardAmt = Math.max(entry * 0.12, atrApprox * 3); // at least 12% or 3x ATR approx
   let tp = entry + rewardAmt;
 
-  const riskPct = ((entry - sl) / entry) * 100;
-  let rewardPct = ((tp - entry) / entry) * 100;
-
-  const maxRiskPct = 8;
-  if (riskPct > maxRiskPct) {
-    const maxRiskAmt = (maxRiskPct / 100) * entry;
-    sl = entry - maxRiskAmt;
-  }
-
-  const finalRisk = entry - sl;
-  rewardAmt = tp - entry;
-
-  if (!isFinite(finalRisk) || finalRisk <= 0) {
+  const riskAmt = entry - sl;
+  if (!isFinite(riskAmt) || riskAmt <= 0) {
     return null;
   }
 
-  if (rewardAmt < finalRisk * 2) {
-    rewardAmt = finalRisk * 2;
-    tp = entry + rewardAmt;
+  // TP diarahkan ke area atas range, atau minimal RR 3.0x.
+  const tpFromRange = entry + baseRange * 0.8;
+  const tpFromRisk = entry + riskAmt * 3;
+  let tp = Math.max(tpFromRange, tpFromRisk);
+  if (tp <= entry) {
+    tp = entry + Math.max(riskAmt * 3, baseRange * 0.7);
   }
 
-  rewardPct = ((tp - entry) / entry) * 100;
-  const rr = (tp - entry) / finalRisk;
+  if (!isFinite(tp) || tp <= entry) {
+    return null;
+  }
+
+  const rewardPct = ((tp - entry) / entry) * 100;
+  const rr = (tp - entry) / riskAmt;
 
   return {
     entry,
@@ -154,9 +152,12 @@ function getPumpStatus(
   const posInRange = (last - low) / range;
   const moveFromLowPct = ((last - low) / low) * 100;
 
+  const notTooHigh = posInRange <= 0.72 && moveFromLowPct <= 32;
+
   if (
-    posInRange >= 0.7 &&
-    moveFromLowPct >= 12 &&
+    notTooHigh &&
+    posInRange >= 0.55 &&
+    moveFromLowPct >= 8 &&
     volIdr >= 150_000_000 &&
     range / last >= 0.05
   ) {
@@ -180,21 +181,21 @@ function getSignal(args: {
 
   if (!Number.isFinite(rr) || rr <= 1) return 'none';
   if (volIdr < MIN_VOL_IDR) return 'none';
+  if (pricePhase === 'sudah_telanjur_naik') return 'none';
 
   const goodRr = rr >= 2;
   const okRr = rr >= 1.6;
   const tpOk = tpFromEntryPct >= 8;
 
   const nearLow = posInRange <= 0.6;
-  const notTooHigh = posInRange <= 0.85;
+  const notTooHigh = posInRange <= 0.72;
 
-  const moveHealthy = moveFromLowPct >= 3 && moveFromLowPct <= 40;
+  const moveHealthy = moveFromLowPct >= 3 && moveFromLowPct <= 28;
 
   if (
     volIdr >= STRONG_VOL_IDR &&
     goodRr &&
     tpOk &&
-    pricePhase !== 'sudah_telanjur_naik' &&
     nearLow &&
     moveHealthy
   ) {
@@ -205,7 +206,6 @@ function getSignal(args: {
     volIdr >= STRONG_VOL_IDR * 0.7 &&
     okRr &&
     tpOk &&
-    pricePhase !== 'sudah_telanjur_naik' &&
     notTooHigh
   ) {
     return 'buy';
@@ -313,25 +313,31 @@ export function buildCoinSignals(rawTickers: RawTicker[]): CoinSignal[] {
     const moveFromLowPct = low > 0 ? ((last - low) / low) * 100 : 0;
     const moveFromHighPct = high > 0 ? ((high - last) / high) * 100 : 0;
 
-    const swing = computeSwingLevels(last, high, low);
+    const swing = computeSwingLevels(last, high, low, posInRange, moveFromLowPct);
     if (!swing) continue;
 
     const pricePhase = getPricePhase(last, high, low);
     const pumpStatus = getPumpStatus(last, high, low, volIdr);
 
-    const signal = getSignal({
-      volIdr,
-      posInRange,
-      moveFromLowPct,
-      rr: swing.rr,
-      pricePhase,
-      pumpStatus,
-      tpFromEntryPct: swing.tpFromEntryPct,
-    });
+  let signal = getSignal({
+    volIdr,
+    posInRange,
+    moveFromLowPct,
+    rr: swing.rr,
+    pricePhase,
+    pumpStatus,
+    tpFromEntryPct: swing.tpFromEntryPct,
+  });
 
-    if (signal === 'none') {
+  if (signal === 'none') {
+    const allowLateWatch =
+      pumpStatus === 'mau_pump' && pricePhase === 'sudah_telanjur_naik' && volIdr >= WATCH_MIN_VOL_IDR;
+    if (allowLateWatch) {
+      signal = 'watch';
+    } else {
       continue;
     }
+  }
 
     const coin: CoinSignal = {
       pair,
