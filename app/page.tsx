@@ -14,8 +14,6 @@ type PredictionDirection = 'bullish' | 'bearish' | 'neutral';
 
 const PIN_STORAGE_KEY = 'sinta-pin-authorized';
 
-const PIN_STORAGE_KEY = 'sinta-pin-authorized';
-
 interface NewsItem {
   id: string;
   title: string;
@@ -543,21 +541,6 @@ export default function HomePage() {
     }
   }, []);
 
-  const handlePinSubmit = useCallback(
-    (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-
-      if (pinInput.trim() === '111111') {
-        setIsAuthorized(true);
-        localStorage.setItem(PIN_STORAGE_KEY, 'true');
-        setPinError(null);
-      } else {
-        setPinError('Incorrect PIN, please try again.');
-      }
-    },
-    [pinInput]
-  );
-
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem(PIN_STORAGE_KEY);
@@ -848,7 +831,7 @@ export default function HomePage() {
       clearInterval(newsInterval);
       clearInterval(safeInterval);
     };
-  }, [fetchData, fetchNews, isAuthorized]);
+  }, [fetchData, fetchNews, fetchSafeTokens, isAuthorized]);
 
   useEffect(() => {
     if (!isAuthorized) return undefined;
