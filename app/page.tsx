@@ -132,7 +132,13 @@ interface PumpOrderSignal {
   buyRatioTrades: number;
   buyRatioVolume: number;
   spreadPct: number;
+  topBuyPrice: number;
+  topSellPrice: number;
   wallNote: string;
+  entry: number;
+  tp: number;
+  sl: number;
+  tradeHint: string;
   action: string;
   reason: string;
 }
@@ -1409,6 +1415,15 @@ export default function HomePage() {
 
           const action = ratio >= 1.8 && buyRatioVolume >= 0.6 ? 'Buy pressure kuat' : ratio >= 1.2 ? 'Mulai dominan buy' : 'Seimbang';
           const reason = `Ratio ${ratio.toFixed(2)} • Buy flow ${(buyRatioVolume * 100).toFixed(0)}% • Spread ${spreadPct.toFixed(2)}%`;
+          const entry = last * 0.995;
+          const sl = last * 0.97;
+          const tp = last * 1.06;
+          const tradeHint =
+            ratio >= 1.8 && buyRatioVolume >= 0.6
+              ? 'Tekanan beli kuat, bisa entry bertahap.'
+              : ratio <= 0.9
+                ? 'Tekanan sell dominan, lebih aman tunggu.'
+                : 'Masih seimbang, entry kecil saja.';
 
           return {
             pair: item.pair,
@@ -1418,7 +1433,13 @@ export default function HomePage() {
             buyRatioTrades,
             buyRatioVolume,
             spreadPct,
+            topBuyPrice: wallBuy.price ?? last,
+            topSellPrice: wallSell.price ?? last,
             wallNote,
+            entry,
+            tp,
+            sl,
+            tradeHint,
             action,
             reason,
           } as PumpOrderSignal;
@@ -2186,6 +2207,7 @@ export default function HomePage() {
                     <tr>
                       <th>Pair</th>
                       <th>Skor</th>
+                      <th>Entry / TP / SL</th>
                       <th>Buy/Sell</th>
                       <th>Flow Buy</th>
                       <th>Wall</th>
@@ -2204,6 +2226,10 @@ export default function HomePage() {
                           <div className="safe-sub">{item.action}</div>
                         </td>
                         <td>
+                          <div className="safe-score">Entry {formatPrice(item.entry)}</div>
+                          <div className="safe-sub">TP {formatPrice(item.tp)} • SL {formatPrice(item.sl)}</div>
+                        </td>
+                        <td>
                           <div className="safe-score">{item.buySellRatio.toFixed(2)}x</div>
                           <div className="safe-sub">Spread {item.spreadPct.toFixed(2)}%</div>
                         </td>
@@ -2213,9 +2239,11 @@ export default function HomePage() {
                         </td>
                         <td>
                           <div className="safe-reason">{item.wallNote}</div>
+                          <div className="safe-sub">Buy wall {formatPrice(item.topBuyPrice)} • Sell wall {formatPrice(item.topSellPrice)}</div>
                         </td>
                         <td>
                           <div className="safe-sub">{item.reason}</div>
+                          <div className="safe-sub">{item.tradeHint}</div>
                         </td>
                       </tr>
                     ))}
