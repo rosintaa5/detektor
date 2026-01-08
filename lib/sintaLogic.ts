@@ -53,6 +53,8 @@ function computeSwingLevels(
     return null;
   }
 
+  const baseRange = Math.max(high - low, last * 0.03);
+  const atrApprox = baseRange / 6;
   const dipAmount = Math.min(last * 0.005, atrApprox * 0.3); // small pullback
   let entry = last - dipAmount;
   if (entry <= 0) entry = last * 0.99;
@@ -64,20 +66,19 @@ function computeSwingLevels(
     riskAmt = entry - sl;
   }
 
-  let rewardAmt = Math.max(entry * 0.12, atrApprox * 3); // at least 12% or 3x ATR approx
-  let tp = entry + rewardAmt;
-
-  const riskAmt = entry - sl;
-  if (!isFinite(riskAmt) || riskAmt <= 0) {
+  const finalRiskAmt = entry - sl;
+  if (!isFinite(finalRiskAmt) || finalRiskAmt <= 0) {
     return null;
   }
 
   // TP diarahkan ke area atas range, atau minimal RR 3.0x.
+  const rewardAmt = Math.max(entry * 0.12, atrApprox * 3); // at least 12% or 3x ATR approx
+  const baseTp = entry + rewardAmt;
   const tpFromRange = entry + baseRange * 0.8;
-  const tpFromRisk = entry + riskAmt * 3;
-  let tp = Math.max(tpFromRange, tpFromRisk);
+  const tpFromRisk = entry + finalRiskAmt * 3;
+  let tp = Math.max(baseTp, tpFromRange, tpFromRisk);
   if (tp <= entry) {
-    tp = entry + Math.max(riskAmt * 3, baseRange * 0.7);
+    tp = entry + Math.max(finalRiskAmt * 3, baseRange * 0.7);
   }
 
   if (!isFinite(tp) || tp <= entry) {
@@ -85,7 +86,7 @@ function computeSwingLevels(
   }
 
   const rewardPct = ((tp - entry) / entry) * 100;
-  const rr = (tp - entry) / riskAmt;
+  const rr = (tp - entry) / finalRiskAmt;
 
   return {
     entry,
