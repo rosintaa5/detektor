@@ -10,7 +10,9 @@ interface ApiResponse {
   coins: CoinSignal[];
 }
 
-type PredictionDirection = 'bullish' | 'bearish' | 'netral';
+type PredictionDirection = 'bullish' | 'bearish' | 'neutral';
+
+const PIN_STORAGE_KEY = 'sinta-pin-authorized';
 
 const PIN_STORAGE_KEY = 'sinta-pin-authorized';
 
@@ -182,18 +184,12 @@ export default function HomePage() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [newsError, setNewsError] = useState<string | null>(null);
-  const [safeAlerts, setSafeAlerts] = useState<SafeAlert[]>([]);
-  const [safeWaiting, setSafeWaiting] = useState<SafeAlert[]>([]);
-  const [safeAll, setSafeAll] = useState<SafeAlert[]>([]);
-  const [safePage, setSafePage] = useState(1);
-  const [safeError, setSafeError] = useState<string | null>(null);
-  const [safeLoading, setSafeLoading] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(
     () => typeof window !== 'undefined' && localStorage.getItem(PIN_STORAGE_KEY) === 'true'
   );
+  const [authChecked, setAuthChecked] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
-  const [scalpPage, setScalpPage] = useState(1);
   const lastWarningStateRef = useRef<Map<string, string>>(new Map());
   const trackedPairsRef = useRef<Map<string, number>>(new Map());
   const [orderSignals, setOrderSignals] = useState<PumpOrderSignal[]>([]);
@@ -217,7 +213,7 @@ export default function HomePage() {
 
   const formatter = useMemo(
     () =>
-      new Intl.NumberFormat('id-ID', {
+      new Intl.NumberFormat('en-US', {
         maximumFractionDigits: 2,
       }),
     []
@@ -228,7 +224,7 @@ export default function HomePage() {
 
   const lastUpdatedLabel = useMemo(
     () =>
-      new Intl.DateTimeFormat('id-ID', {
+      new Intl.DateTimeFormat('en-US', {
         dateStyle: 'medium',
         timeStyle: 'short',
         timeZone: 'Asia/Jakarta',
@@ -238,23 +234,23 @@ export default function HomePage() {
 
   const describeHorizonWindow = useCallback(
     (horizon: string) => {
-      const matches = [...horizon.matchAll(/(\d+)\s*(hari|minggu)/gi)];
+      const matches = [...horizon.matchAll(/(\d+)\s*(day|days|week|weeks)/gi)];
 
       let maxDays = 3;
       matches.forEach(([, num, unit]) => {
-        const days = Number.parseInt(num, 10) * (unit.toLowerCase().startsWith('minggu') ? 7 : 1);
+        const days = Number.parseInt(num, 10) * (unit.toLowerCase().startsWith('week') ? 7 : 1);
         if (!Number.isNaN(days) && days > maxDays) {
           maxDays = days;
         }
       });
 
       const until = new Date(nowTs + maxDays * 24 * 60 * 60 * 1000);
-      const untilLabel = new Intl.DateTimeFormat('id-ID', {
+      const untilLabel = new Intl.DateTimeFormat('en-US', {
         day: 'numeric',
         month: 'short',
       }).format(until);
 
-      return { maxDays, untilLabel: `sampai ${untilLabel}` };
+      return { maxDays, untilLabel: `until ${untilLabel}` };
     },
     [nowTs]
   );
@@ -262,19 +258,19 @@ export default function HomePage() {
   const formatRelativeTime = useCallback(
     (time: number) => {
       const diff = nowTs - time;
-      if (diff < 0) return 'baru saja';
+      if (diff < 0) return 'just now';
 
       const seconds = Math.floor(diff / 1000);
-      if (seconds < 60) return `${seconds}s lalu`;
+      if (seconds < 60) return `${seconds}s ago`;
 
       const minutes = Math.floor(seconds / 60);
-      if (minutes < 60) return `${minutes}m lalu`;
+      if (minutes < 60) return `${minutes}m ago`;
 
       const hours = Math.floor(minutes / 60);
-      if (hours < 24) return `${hours}j lalu`;
+      if (hours < 24) return `${hours}h ago`;
 
       const days = Math.floor(hours / 24);
-      return `${days}h lalu`;
+      return `${days}d ago`;
     },
     [nowTs]
   );
@@ -295,46 +291,46 @@ export default function HomePage() {
         return {
           key: 'cl',
           label: 'CL / Risk Alert',
-          note: `Harga mendekati/turun ke area SL ${formatPrice(sl)}. Jika tidak bertahan, disiplin CL agar tidak makin dalam.`,
+          note: `Price is near or falling toward SL ${formatPrice(sl)}. Cut losses early if it does not hold to avoid deeper drawdowns.`,
         };
       }
 
       if (hitTp) {
         return {
           key: 'tp_full',
-          label: 'TP Semua',
-          note: `TP ${formatPrice(tp)} sudah tersentuh. Amankan profit dan hindari entry baru sampai ada setup ulang.`,
+          label: 'Full TP',
+          note: `TP ${formatPrice(tp)} has been hit. Secure profits and avoid new entries until a fresh setup appears.`,
         };
       }
 
       if (nearTp) {
         return {
           key: 'tp_partial',
-          label: 'TP Sebagian',
-          note: `Harga mendekati TP ${formatPrice(tp)}. Realisasikan sebagian, sisanya biarkan mengalir jika volume masih kuat.`,
+          label: 'Partial TP',
+          note: `Price is nearing TP ${formatPrice(tp)}. Realize partial profits and let the rest run if volume stays strong.`,
         };
       }
 
       if (aboveEntry) {
         return {
           key: 'no_entry',
-          label: 'Tahan Entry Baru',
-          note: `Momentum sudah jalan di atas entry ${formatPrice(entry)}. Jangan kejar-kejaran, fokus kelola posisi dan siapkan TP di ${formatPrice(tp)}.`,
+          label: 'Hold New Entries',
+          note: `Momentum already moved above entry ${formatPrice(entry)}. Do not chase; manage the position and keep TP at ${formatPrice(tp)}.`,
         };
       }
 
       if (nearEntry) {
         return {
           key: 'entry_zone',
-          label: 'Area Entry',
-          note: `Harga masih sekitar entry ${formatPrice(entry)}. Bisa cicil, tapi tetap disiplin SL ${formatPrice(sl)} dan target TP ${formatPrice(tp)}.`,
+          label: 'Entry Zone',
+          note: `Price is still around entry ${formatPrice(entry)}. Scale in slowly but stay disciplined with SL ${formatPrice(sl)} and TP ${formatPrice(tp)}.`,
         };
       }
 
       return {
         key: 'wait',
-        label: 'Tunggu Momentum',
-        note: `Belum menyentuh area entry ${formatPrice(entry)}. Sabar tunggu konfirmasi sebelum entry dan bidik TP di ${formatPrice(tp)}.`,
+        label: 'Wait for Momentum',
+        note: `Has not reached the entry area ${formatPrice(entry)}. Wait for confirmation before entering and aim for TP at ${formatPrice(tp)}.`,
       };
     },
     [formatPrice]
@@ -379,32 +375,32 @@ export default function HomePage() {
         const baseScore = (newsStats?.score ?? 0) + pumpBoost + rrBoost + momentum;
 
         const direction: PredictionDirection =
-          baseScore >= 1.5 ? 'bullish' : baseScore <= -0.6 ? 'bearish' : 'netral';
+          baseScore >= 1.5 ? 'bullish' : baseScore <= -0.6 ? 'bearish' : 'neutral';
 
         const confidence = Math.min(100, Math.max(35, Math.round((Math.abs(baseScore) + (newsStats?.hits ?? 0)) * 12)));
 
         const rationaleParts = [
-          `RR ${coin.rr.toFixed(1)} dengan TP ${formatPrice(coin.tp)} dan SL ${formatPrice(coin.sl)}`,
+          `RR ${coin.rr.toFixed(1)} with TP ${formatPrice(coin.tp)} and SL ${formatPrice(coin.sl)}`,
         ];
 
         if (newsStats) {
           rationaleParts.push(
-            `${newsStats.hits} kabar sentimen ${newsStats.score >= 0 ? 'positif' : 'negatif'} (bobot ${newsStats.impact.toFixed(
+            `${newsStats.hits} sentiment updates leaning ${newsStats.score >= 0 ? 'positive' : 'negative'} (weight ${newsStats.impact.toFixed(
               1
             )})`
           );
         }
 
         if (coin.pumpStatus === 'mau_pump') {
-          rationaleParts.push('status mau pump menambah momentum');
+          rationaleParts.push('About-to-pump status adds momentum');
         }
 
         const suggestedAction =
           direction === 'bullish'
-            ? 'Entry bertahap, TP bertingkat, jaga SL ketat.'
+            ? 'Enter gradually, scale TPs, and keep a tight SL.'
             : direction === 'bearish'
-              ? 'Hindari entry baru, fokus proteksi atau cari relief rally untuk exit.'
-              : 'Pantau dulu, tunggu konfirmasi volume atau retest area entry.';
+              ? 'Avoid new entries; focus on protection or use relief rallies to exit.'
+              : 'Watch first and wait for volume confirmation or an entry-area retest.';
 
         predictionsMap.set(asset, {
           asset,
@@ -412,7 +408,7 @@ export default function HomePage() {
           confidence,
           rationale: rationaleParts.join(' • '),
           suggestedAction,
-          horizon: '1 minggu',
+          horizon: '1 week',
         });
       });
 
@@ -420,23 +416,23 @@ export default function HomePage() {
         if (predictionsMap.has(asset)) return;
 
         const direction: PredictionDirection =
-          stats.score >= 1.2 ? 'bullish' : stats.score <= -0.6 ? 'bearish' : 'netral';
+          stats.score >= 1.2 ? 'bullish' : stats.score <= -0.6 ? 'bearish' : 'neutral';
         const confidence = Math.min(90, Math.max(30, Math.round((Math.abs(stats.score) + stats.hits) * 10)));
 
         predictionsMap.set(asset, {
           asset,
           direction,
           confidence,
-          rationale: `${stats.hits} kabar terkait dengan skor sentimen ${(stats.score / stats.hits).toFixed(2)} dan bobot ${stats.impact.toFixed(
+          rationale: `${stats.hits} related updates with sentiment score ${(stats.score / stats.hits).toFixed(2)} and weight ${stats.impact.toFixed(
             1
           )}`,
           suggestedAction:
             direction === 'bullish'
-              ? 'Pantau peluang breakout, siapkan entry skala kecil dengan SL dekat.'
+              ? 'Monitor breakout potential; prep small entries with a tight SL.'
               : direction === 'bearish'
-                ? 'Waspada volatilitas, hindari entry agresif.'
-                : 'Netral, tunggu katalis baru atau data teknikal tambahan.',
-          horizon: '1 minggu',
+                ? 'Beware volatility; avoid aggressive entries.'
+                : 'Neutral—wait for new catalysts or more technical data.',
+          horizon: '1 week',
         });
       });
 
@@ -453,7 +449,7 @@ export default function HomePage() {
       setError(null);
       const res = await fetch('/api/tickers');
       if (!res.ok) {
-        throw new Error(`Gagal mengambil data (${res.status})`);
+        throw new Error(`Failed to fetch data (${res.status})`);
       }
       const data: ApiResponse = await res.json();
       const incomingCoins = data.coins || [];
@@ -526,7 +522,7 @@ export default function HomePage() {
       });
     } catch (err: unknown) {
       console.error(err);
-      setError(err instanceof Error ? err.message : 'Gagal mengambil data');
+      setError(err instanceof Error ? err.message : 'Failed to fetch data');
     } finally {
       setLoading(false);
     }
@@ -537,13 +533,38 @@ export default function HomePage() {
       setNewsError(null);
       const res = await fetch('/api/news');
       if (!res.ok) {
-        throw new Error(`Gagal mengambil berita (${res.status})`);
+        throw new Error(`Failed to fetch news (${res.status})`);
       }
       const data: NewsResponse = await res.json();
       setNews(data.news || []);
     } catch (err: unknown) {
       console.error(err);
-      setNewsError(err instanceof Error ? err.message : 'Gagal mengambil berita');
+      setNewsError(err instanceof Error ? err.message : 'Failed to fetch news');
+    }
+  }, []);
+
+  const handlePinSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+
+      if (pinInput.trim() === '111111') {
+        setIsAuthorized(true);
+        localStorage.setItem(PIN_STORAGE_KEY, 'true');
+        setPinError(null);
+      } else {
+        setPinError('Incorrect PIN, please try again.');
+      }
+    },
+    [pinInput]
+  );
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem(PIN_STORAGE_KEY);
+      if (stored === 'true') {
+        setIsAuthorized(true);
+      }
+      setAuthChecked(true);
     }
   }, []);
 
@@ -827,7 +848,7 @@ export default function HomePage() {
       clearInterval(newsInterval);
       clearInterval(safeInterval);
     };
-  }, [fetchData, fetchNews, fetchSafeTokens, isAuthorized]);
+  }, [fetchData, fetchNews, isAuthorized]);
 
   useEffect(() => {
     if (!isAuthorized) return undefined;
@@ -882,7 +903,7 @@ export default function HomePage() {
         const directionScore = pred
           ? pred.direction === 'bullish'
             ? 25
-            : pred.direction === 'netral'
+            : pred.direction === 'neutral'
               ? 8
               : -50
           : 0;
@@ -906,11 +927,11 @@ export default function HomePage() {
           confidence: pred?.confidence ?? 50,
           rationale:
             pred?.rationale ||
-            `RR ${coin.rr.toFixed(1)} dan momentum ${coin.moveFromLowPct.toFixed(1)}% dari low 24j.`,
+            `RR ${coin.rr.toFixed(1)} with momentum ${coin.moveFromLowPct.toFixed(1)}% from the 24h low.`,
           suggestedAction:
             pred?.suggestedAction ||
-            'Entry bertahap, hold sampai TP bertingkat. Jangan lupa disiplin SL.',
-          horizon: pred?.horizon ?? 'Sampai TP (1-3 hari)',
+            'Enter gradually and hold through tiered TP targets. Stay disciplined with the SL.',
+          horizon: pred?.horizon ?? 'Until TP (1-3 days)',
         };
       })
       .filter((item) => item.score > 40)
@@ -938,7 +959,7 @@ export default function HomePage() {
     const btcPrediction = predictions.find((p) => p.asset.toUpperCase() === 'BTC');
 
     const bias = btcPrediction?.direction ?? (btc?.pricePhase === 'baru_mau_naik' ? 'bullish' : 'bearish');
-    const horizon = btcPrediction?.horizon ?? '1-3 hari';
+    const horizon = btcPrediction?.horizon ?? '1-3 days';
     const horizonWindow = describeHorizonWindow(horizon);
 
     const toIdr = (value: number | null | undefined) => {
@@ -971,72 +992,54 @@ export default function HomePage() {
         const entryGapPct = Number.isFinite(coin.last) && coin.last > 0 ? ((coin.entry - coin.last) / coin.last) * 100 : 0;
         const heatPct = Math.max(0, Math.min(100, coin.posInRange * 100));
         const momentumPct = Math.max(0, coin.moveFromLowPct);
-        const isLate = coin.pricePhase === 'sudah_telanjur_naik' || entryGapPct < -3;
         const volumeScore = Math.max(18, Math.min(40, Math.log10(Math.max(coin.volIdr, 1)) * 12 - 36));
         const rrScore = Math.min(28, Math.max(0, rrLive * 9));
         const setupScore = Math.min(18, Math.max(0, 18 - Math.abs(heatPct - 58) * 0.25));
         const momentumScore = Math.min(24, Math.max(0, momentumPct * 0.7));
-        const score = Math.round(volumeScore + rrScore + setupScore + momentumScore - (isLate ? 12 : 0));
+        const score = Math.round(volumeScore + rrScore + setupScore + momentumScore);
 
         const coilPct = Math.max(0, Math.min(25, ((coin.high - coin.low) / Math.max(coin.low, 1)) * 100));
-        const sidewayLabel = coilPct <= 6 ? 'Sideway ketat' : coilPct <= 12 ? 'Sideway lebar' : 'Range lebar';
+        const sidewayLabel = coilPct <= 6 ? 'Tight range' : coilPct <= 12 ? 'Wide sideway' : 'Broad range';
         const sidewayNote =
           coilPct <= 6
-            ? 'Sudah sideway lama, siap meledak jika volume masuk'
+            ? 'Ranging tightly for a while; ready to pop if volume steps in'
             : coilPct <= 12
-              ? 'Sideway cukup lama, butuh trigger konfirmasi'
-              : 'Range lebar, momentum sering bolak-balik';
-
-        const patternLabel =
-          coilPct <= 6 && heatPct >= 40 && heatPct <= 65
-            ? 'Base ketat (akumulasi)'
-            : heatPct >= 70
-              ? 'Breakout atas (lanjutan)'
-              : heatPct >= 45
-                ? 'Naik bertahap (stair up)'
-                : 'Re-accumulation (balik base)';
-
-        const patternNote =
-          patternLabel === 'Base ketat (akumulasi)'
-            ? 'Pola mirip fase akumulasi sebelum pump, tunggu dorongan volume.'
-            : patternLabel === 'Breakout atas (lanjutan)'
-              ? 'Pola lanjutan setelah breakout, rawan telanjur bila entry terlambat.'
-              : patternLabel === 'Naik bertahap (stair up)'
-                ? 'Pola naik bertahap; entry aman jika masih dekat base.'
-                : 'Pola balik base; cocok untuk entry saat harga turun mendekati dasar.';
+              ? 'Sideways for a while; needs a clear trigger'
+              : 'Wide range; momentum often whipsaws';
 
         const priorSpike = Math.max(momentumPct - 5, 0);
         const historyNote = priorSpike >= 18
-          ? `Sempat naik ${priorSpike.toFixed(1)}% setelah sideway`
-          : `Kenaikan kecil ${priorSpike.toFixed(1)}%, peluang lanjut terbuka`;
+          ? `Previously climbed ${priorSpike.toFixed(1)}% after ranging`
+          : `Small rise of ${priorSpike.toFixed(1)}%; room to continue is open`;
 
         const midLine = (coin.entry + coin.tp) / 2;
         const crossedMid = Number.isFinite(coin.last) && coin.last >= midLine;
         const structureNote = crossedMid
-          ? 'Harga sudah cross garis tengah menuju TP'
-          : 'Belum cross garis tengah, tunggu trigger';
+          ? 'Price has crossed the mid-line toward TP'
+          : 'Has not crossed the mid-line yet; wait for a trigger';
 
-        const btcDrag = btcContext.bias === 'bearish' ? 'Terpengaruh bias BTC turun, kurangi lot' : 'Didukung bias BTC/upside';
+        const btcDrag = btcContext.bias === 'bearish' ? 'BTC bias is down—reduce size' : 'Supported by BTC/upside bias';
 
         const liquidityLabel =
           coin.volIdr >= 5_000_000_000
-            ? 'Likuid tinggi'
+            ? 'High liquidity'
             : coin.volIdr >= 2_000_000_000
-              ? 'Likuid cukup'
-              : 'Likuid tipis';
+              ? 'Decent liquidity'
+              : 'Thin liquidity';
 
         const bufferNote =
           downsidePct >= 5
-            ? 'Buffer SL aman'
+            ? 'SL buffer is comfortable'
             : downsidePct >= 3
-              ? 'Buffer pas-pasan'
-              : 'Buffer tipis, rawan longsor';
+              ? 'Buffer is middling'
+              : 'Buffer is thin; prone to sharp drops';
 
-        const entryNote = isLate
-          ? `Telanjur naik, entry tunggu turun dekat ${formatPrice(coin.entry)}`
-          : entryGapPct < 1
-            ? 'Sudah di dekat/paska entry'
-            : 'Masih diskon vs entry, boleh cicil';
+        const entryNote =
+          entryGapPct < -3
+            ? 'Price has run far above entry, wait for a retrace'
+            : entryGapPct < 1
+              ? 'Already near or past entry'
+              : 'Still below entry—can scale in';
 
         let bias: 'bull' | 'neutral' | 'risk' = 'bull';
         if (rrLive < 1.4 || upsidePct < 6) {
@@ -1045,30 +1048,26 @@ export default function HomePage() {
           bias = 'neutral';
         }
 
-        const actionLine = isLate
-          ? `Sudah telanjur naik. Entry aman saat harga turun mendekati ${formatPrice(coin.entry)} sebelum lanjut.`
-          : bias === 'bull'
-            ? `Peluang ${upsidePct.toFixed(1)}% ke TP dengan RR live ${rrLive.toFixed(2)}; entry ${
-                entryGapPct > 1 ? 'masih diskon' : 'sudah jalan'
-              } ${entryGapPct.toFixed(1)}%.`
+        const actionLine =
+          bias === 'bull'
+            ? `Chance for ${upsidePct.toFixed(1)}% upside to TP with live RR ${rrLive.toFixed(2)}; entry ${
+                entryGapPct > 1 ? 'still discounted' : 'already moving'
+              } by ${entryGapPct.toFixed(1)}%.`
             : bias === 'neutral'
-              ? `Setup cukup, tapi butuh konfirmasi volume tambahan. Upside ${upsidePct.toFixed(1)}%, RR ${rrLive.toFixed(2)}.`
-              : `Risiko > reward (${rrLive.toFixed(2)}). Lebih aman tunggu re-entry dekat ${formatPrice(coin.entry)}.`;
+            ? `Decent setup but needs extra volume confirmation. Upside ${upsidePct.toFixed(1)}%, RR ${rrLive.toFixed(2)}.`
+            : `Risk > reward (${rrLive.toFixed(2)}). Safer to wait for a re-entry near ${formatPrice(coin.entry)}.`;
 
         const convictionLabel =
           score >= 90 ? 'A' : score >= 75 ? 'B+' : score >= 65 ? 'B' : score >= 55 ? 'C+' : 'C';
         const convictionNote =
           rrLive >= 2.4
-            ? 'RR sangat sehat, prioritas masuk'
+            ? 'RR is very healthy—priority entry'
             : rrLive >= 1.6
-              ? 'RR oke, boleh eksekusi bertahap'
-              : 'RR rendah, dahulukan proteksi';
+              ? 'RR is solid—execute gradually'
+              : 'RR is low—prioritize protection';
 
         const riskNote = `${bufferNote} • ${entryNote}`;
-        const confidencePct = Math.min(
-          99,
-          Math.max(50, Math.round(score * 0.95 + (btcContext.bias === 'bullish' ? 6 : -4)))
-        );
+        const confidencePct = Math.min(99, Math.max(45, Math.round(score * 0.9 + (btcContext.bias === 'bullish' ? 4 : -6))));
 
         return {
           coin,
@@ -1078,10 +1077,6 @@ export default function HomePage() {
           entryGapPct,
           heatPct,
           momentumPct,
-          volumeScore,
-          rrScore,
-          setupScore,
-          momentumScore,
           score,
           bias,
           actionLine,
@@ -1091,398 +1086,54 @@ export default function HomePage() {
           riskNote,
           sidewayLabel,
           sidewayNote,
-          patternLabel,
-          patternNote,
           structureNote,
           btcDrag,
           historyNote,
           confidencePct,
-          isLate,
         };
       })
       .sort((a, b) => b.score - a.score);
   }, [btcContext.bias, formatPrice, pumpList]);
 
-  const scalpQuickList = useMemo(() => {
-    const candidates = pumpMathList
-      .filter((item) => {
-        const edge = item.upsidePct - item.downsidePct;
-        return (
-          item.coin.last < 100 &&
-          item.confidencePct >= 78 &&
-          item.upsidePct >= 8 &&
-          edge >= 4 &&
-          item.rrLive >= 1.6
-        );
-      })
-      .map((item) => {
-        const tpTargets = computeTpTargets(item.coin);
-        const tp1 = tpTargets[0];
-        const tp2 = tpTargets[1];
-        const edgePct = item.upsidePct - item.downsidePct;
-        const tpChance = Math.min(99, Math.max(60, Math.round(item.confidencePct * 0.6 + edgePct * 2 + item.rrLive * 6)));
-        const priorityScore = Math.round(tpChance * 0.55 + item.confidencePct * 0.3 + edgePct * 1.8 + item.rrLive * 7);
-
-        const entryNote =
-          item.entryGapPct < -3
-            ? 'Sudah lari, tunggu retrace tipis'
-            : item.entryGapPct <= 1
-              ? 'Gap sempit, boleh bid tipis'
-              : 'Masih diskon vs entry, curi start dengan lot terbatas';
-
-        const reasonShort = `${item.structureNote} • Edge ${edgePct.toFixed(1)}% • ${entryNote}`;
-
-        return {
-          pair: item.coin.pair,
-          price: item.coin.last,
-          confidence: item.confidencePct,
-          tpChance,
-          rrLive: item.rrLive,
-          upsidePct: item.upsidePct,
-          edgePct,
-          priorityScore,
-          liquidity: item.liquidityLabel,
-          entryGapPct: item.entryGapPct,
-          entryNote,
-          reasonShort,
-          tp1,
-          tp2,
-          action: item.actionLine,
-          supports: [item.structureNote, item.btcDrag, `Edge live ${edgePct.toFixed(1)}%`],
-        };
-      });
-
-    return candidates
-      .sort((a, b) =>
-        b.priorityScore - a.priorityScore || b.confidence - a.confidence || b.tpChance - a.tpChance || b.edgePct - a.edgePct
-      );
-  }, [computeTpTargets, pumpMathList]);
-
-  const scalpPageSize = 8;
-  const totalScalpPages = Math.max(1, Math.ceil(scalpQuickList.length / scalpPageSize));
-
-  useEffect(() => {
-    setScalpPage((prev) => Math.min(Math.max(1, prev), totalScalpPages));
-  }, [totalScalpPages]);
-
-  const displayedScalp = useMemo(
-    () => scalpQuickList.slice((scalpPage - 1) * scalpPageSize, scalpPage * scalpPageSize),
-    [scalpPage, scalpPageSize, scalpQuickList]
-  );
-
-  const safePageSize = 10;
-  const totalSafePages = Math.max(1, Math.ceil(safeAll.length / safePageSize));
-
-  useEffect(() => {
-    setSafePage((prev) => Math.min(Math.max(1, prev), totalSafePages));
-  }, [totalSafePages]);
-
-  const displayedSafeAll = useMemo(
-    () => safeAll.slice((safePage - 1) * safePageSize, safePage * safePageSize),
-    [safeAll, safePage, safePageSize]
-  );
-
-
-
-  const renderPumpMathCard = useCallback(
-    (item: (typeof pumpMathList)[number]) => {
-      const edgePct = item.upsidePct - item.downsidePct;
-      const tpTargets = computeTpTargets(item.coin);
-      const buyLine =
-        item.rrLive >= 2
-          ? `Layak dibeli: upside ${item.upsidePct.toFixed(1)}% & RR ${item.rrLive.toFixed(2)}x (RR sehat).`
-          : `Masih layak: upside ${item.upsidePct.toFixed(1)}% & RR ${item.rrLive.toFixed(2)}x (cukup).`;
-
-      const shouldWaitCorrection = item.entryGapPct > 3 && item.heatPct < 70;
-      const timingLine = item.isLate
-        ? `Tunggu koreksi ke ${formatPrice(item.coin.entry)} dulu (sudah telanjur naik).`
-        : shouldWaitCorrection
-          ? `Tunggu koreksi ke ${formatPrice(item.coin.entry)} sebelum entry.`
-          : `Entry sekarang bertahap: momentum kuat, jangan ketinggalan.`;
-
-      const paceLine =
-        item.heatPct >= 80
-          ? 'Cicil kecil: heat tinggi, hindari FOMO.'
-          : item.liquidityLabel === 'Likuid tipis'
-            ? 'Cicil: likuiditas tipis, jangan all-in.'
-            : 'Bisa cicil bertahap: likuiditas cukup dan heat aman.';
-
-      const cautionLine = `Hati-hati: ${item.riskNote.toLowerCase()}.`;
-      const tpChance = Math.min(99, Math.max(45, Math.round(item.confidencePct * 0.92 + item.rrLive * 6)));
-      const tpLine = `Prediksi tembus TP: ${tpChance}% (gabungan score & bias BTC).`;
-      const entryReason = shouldWaitCorrection || item.isLate
-        ? `Alasan tunggu: gap entry ${item.entryGapPct.toFixed(1)}%, heat ${item.heatPct.toFixed(1)}% masih aman.`
-        : `Alasan entry sekarang: momentum ${item.momentumPct.toFixed(1)}%, RR ${item.rrLive.toFixed(
-            2
-          )}x, pola ${item.patternLabel.toLowerCase()}.`;
-      const clWindow = item.momentumPct >= 14 ? '1-2 hari' : item.momentumPct >= 8 ? '2-3 hari' : '3-4 hari';
-      const clLine = `CL jika ${clWindow} harga belum naik atau malah turun di bawah ${formatPrice(item.coin.sl)}.`;
-      const supportLine = `Pendukung: ${item.structureNote}; ${item.btcDrag}; Upside ${item.upsidePct.toFixed(
-        1
-      )}% vs buffer ${item.downsidePct.toFixed(1)}%.`;
-      const formulaLine = `Rumus skor: Vol ${item.volumeScore.toFixed(0)} + RR ${item.rrScore.toFixed(
-        0
-      )} + Setup ${item.setupScore.toFixed(0)} + Mom ${item.momentumScore.toFixed(0)}${item.isLate ? ' - Late' : ''}.`;
-      const patternLine = `Pola chart: ${item.patternLabel}. ${item.patternNote}`;
-
-      return (
-        <div key={item.coin.pair} className={`pump-math-card bias-${item.bias}`}>
-          <div className="pump-math-body">
-            <div className="pump-math-head">
-              <div className="pump-math-title">
-                <div className="pump-math-pair">
-                  {item.coin.pair.toUpperCase()}{' '}
-                  <span className="pump-math-price">({formatPrice(item.coin.last)})</span>
-                </div>
-                <div className="pump-math-sub">
-                  Likuiditas {item.liquidityLabel} • Volume {formatter.format(item.coin.volIdr)} IDR
-                </div>
-              </div>
-              <div className="confidence-box">
-                <div className="confidence-value">{item.confidencePct}%</div>
-                <div className="confidence-label">Yakin pump</div>
-                <span className="confidence-grade">{item.convictionLabel}</span>
-              </div>
-            </div>
-
-            <div className="pump-math-quick">
-              <div className="quick-item">
-                <div className="quick-label">Upside → TP</div>
-                <div className="quick-value">{item.upsidePct.toFixed(1)}%</div>
-                <div className="quick-sub">RR live {item.rrLive.toFixed(2)}x</div>
-              </div>
-              <div className="quick-item">
-                <div className="quick-label">Momentum 24j</div>
-                <div className="quick-value">{item.momentumPct.toFixed(1)}%</div>
-                <div className="quick-sub">Heat range {item.heatPct.toFixed(1)}%</div>
-              </div>
-              <div className="quick-item">
-                <div className="quick-label">Buffer SL</div>
-                <div className="quick-value">{item.downsidePct.toFixed(1)}%</div>
-                <div className="quick-sub">{item.riskNote}</div>
-              </div>
-              <div className="quick-item">
-                <div className="quick-label">Edge live</div>
-                <div className="quick-value">{edgePct.toFixed(1)}%</div>
-                <div className="quick-sub">Upside - downside</div>
-              </div>
-            </div>
-
-            <div className="pump-math-forecast">
-              <div className="forecast-title">Perkiraan tembus TP</div>
-              <div className="forecast-value">{tpChance}%</div>
-              <div className="forecast-sub">{tpLine}</div>
-              <ul className="forecast-tp-list">
-                {tpTargets.map((tp, idx) => (
-                  <li key={`${item.coin.pair}-tp-${idx}`}>
-                    TP {idx + 1}: {formatPrice(tp.price)} ({tp.pct.toFixed(1)}%)
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="pump-math-support">
-              <div className="support-title">Pendukung kuat</div>
-              <div className="support-chips">
-                {[
-                  item.structureNote,
-                  item.btcDrag,
-                  `Pola: ${item.patternLabel}`,
-                  `Upside ${item.upsidePct.toFixed(1)}% vs buffer ${item.downsidePct.toFixed(1)}%`,
-                ].map((note, idx) => (
-                  <span key={`${item.coin.pair}-support-${idx}`} className="support-chip">
-                    {note}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="pump-math-action">
-              {item.actionLine}
-              <div className="pump-math-hint">
-                Entry gap {item.entryGapPct.toFixed(1)}% • {item.historyNote}
-              </div>
-              <div className="pump-math-verdict">
-                <div className="verdict-line">{tpLine}</div>
-                <div className="verdict-line">{supportLine}</div>
-                <div className="verdict-line">{entryReason}</div>
-                <div className="verdict-line">{formulaLine}</div>
-                <div className="verdict-line verdict-caution">{clLine}</div>
-                <div className="verdict-line">{patternLine}</div>
-                <div className="verdict-line">{buyLine}</div>
-                <div className="verdict-line">{timingLine}</div>
-                <div className="verdict-line">{paceLine}</div>
-                <div className="verdict-line verdict-caution">{cautionLine}</div>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      );
-    },
-    [
-      computeTpTargets,
-      formatPrice,
-      formatter,
-    ]
-  );
-
-  const toPairId = useCallback((pair: string) => pair.replace('_', ''), []);
-
-  const handleOrderScan = useCallback(async () => {
-    const now = Date.now();
-    if (orderCooldownUntil && now < orderCooldownUntil) {
-      return;
-    }
-
-    try {
-      setOrderLoading(true);
-      setOrderError(null);
-      setOrderCooldownUntil(now + 45 * 1000);
-
-      const summariesRes = await fetch('/api/indodax/summaries');
-      if (!summariesRes.ok) {
-        throw new Error(`Summaries gagal ${summariesRes.status}`);
-      }
-      const summaries = (await summariesRes.json()) as SummariesResponse;
-      const tickers = summaries.tickers ?? {};
-      const topPairs = Object.entries(tickers)
-        .map(([pair, info]) => ({
-          pair,
-          volIdr: Number(info.vol_idr ?? info.vol_id ?? 0) || 0,
-          last: Number(info.last ?? 0) || 0,
-          high: Number(info.high ?? 0) || 0,
-          low: Number(info.low ?? 0) || 0,
-        }))
-        .filter((item) => item.last > 0 && item.volIdr > 0)
-        .sort((a, b) => b.volIdr - a.volIdr)
-        .slice(0, 10);
-
-      const results = await Promise.allSettled(
-        topPairs.map(async (item) => {
-          const pairId = toPairId(item.pair);
-          const [depthRes, tradesRes] = await Promise.all([
-            fetch(`/api/indodax/depth/${pairId}`),
-            fetch(`/api/indodax/trades/${pairId}`),
-          ]);
-
-          if (!depthRes.ok || !tradesRes.ok) {
-            throw new Error(`Order data gagal ${item.pair}`);
-          }
-
-          const depthData = (await depthRes.json()) as DepthBookResponse;
-          const tradesData = (await tradesRes.json()) as TradeItem[];
-
-          const last = item.last;
-          const buyLevels = (depthData.buy ?? []).map(([price, amount]) => ({
-            price: Number(price),
-            amount: Number(amount),
-          }));
-          const sellLevels = (depthData.sell ?? []).map(([price, amount]) => ({
-            price: Number(price),
-            amount: Number(amount),
-          }));
-
-          const buyBand = buyLevels.filter((lvl) => lvl.price >= last * 0.97 && lvl.price <= last);
-          const sellBand = sellLevels.filter((lvl) => lvl.price <= last * 1.03 && lvl.price >= last);
-          const buyValue = buyBand.reduce((sum, lvl) => sum + lvl.price * lvl.amount, 0);
-          const sellValue = sellBand.reduce((sum, lvl) => sum + lvl.price * lvl.amount, 0);
-          const ratio = sellValue > 0 ? buyValue / sellValue : buyValue > 0 ? 5 : 1;
-
-          const bestBid = buyLevels.length > 0 ? Math.max(...buyLevels.map((lvl) => lvl.price)) : last;
-          const bestAsk = sellLevels.length > 0 ? Math.min(...sellLevels.map((lvl) => lvl.price)) : last;
-          const mid = (bestBid + bestAsk) / 2;
-          const spreadPct = mid > 0 ? ((bestAsk - bestBid) / mid) * 100 : 0;
-
-          const trades = tradesData.slice(0, 200);
-          const buyTrades = trades.filter((t) => t.type === 'buy');
-          const sellTrades = trades.filter((t) => t.type === 'sell');
-          const buyCount = buyTrades.length;
-          const sellCount = sellTrades.length;
-          const buyVol = buyTrades.reduce((sum, t) => sum + Number(t.amount), 0);
-          const sellVol = sellTrades.reduce((sum, t) => sum + Number(t.amount), 0);
-          const buyRatioTrades = buyCount + sellCount > 0 ? buyCount / (buyCount + sellCount) : 0;
-          const buyRatioVolume = buyVol + sellVol > 0 ? buyVol / (buyVol + sellVol) : 0;
-
-          const wallBuy = buyLevels.reduce((best, lvl) => (lvl.amount > best.amount ? lvl : best), buyLevels[0] ?? { amount: 0, price: last });
-          const wallSell = sellLevels.reduce((best, lvl) => (lvl.amount > best.amount ? lvl : best), sellLevels[0] ?? { amount: 0, price: last });
-          const wallNote = wallBuy.amount >= wallSell.amount ? `Buy wall ${formatPrice(wallBuy.price)}` : `Sell wall ${formatPrice(wallSell.price)}`;
-
-          const volumeScore = Math.min(30, Math.max(0, Math.log10(Math.max(item.volIdr, 1)) * 8 - 20));
-          const depthScore = Math.min(30, Math.max(0, (ratio - 1) * 15));
-          const flowScore = Math.min(30, Math.max(0, (buyRatioVolume - 0.5) * 60));
-          const score = Math.round(Math.min(100, volumeScore + depthScore + flowScore));
-
-          const action = ratio >= 1.8 && buyRatioVolume >= 0.6 ? 'Buy pressure kuat' : ratio >= 1.2 ? 'Mulai dominan buy' : 'Seimbang';
-          const reason = `Ratio ${ratio.toFixed(2)} • Buy flow ${(buyRatioVolume * 100).toFixed(0)}% • Spread ${spreadPct.toFixed(2)}%`;
-          const entry = last * 0.995;
-          const sl = last * 0.97;
-          const tp = last * 1.06;
-          const tradeHint =
-            ratio >= 1.8 && buyRatioVolume >= 0.6
-              ? 'Tekanan beli kuat, bisa entry bertahap.'
-              : ratio <= 0.9
-                ? 'Tekanan sell dominan, lebih aman tunggu.'
-                : 'Masih seimbang, entry kecil saja.';
-
-          return {
-            pair: item.pair,
-            last,
-            score,
-            buySellRatio: ratio,
-            buyRatioTrades,
-            buyRatioVolume,
-            spreadPct,
-            topBuyPrice: wallBuy.price ?? last,
-            topSellPrice: wallSell.price ?? last,
-            wallNote,
-            entry,
-            tp,
-            sl,
-            tradeHint,
-            action,
-            reason,
-          } as PumpOrderSignal;
-        })
-      );
-
-      const signals = results
-        .flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []))
-        .sort((a, b) => b.score - a.score);
-      setOrderSignals(signals);
-      setOrderLastUpdate(now);
-    } catch (err) {
-      console.error(err);
-      setOrderError('Gagal mengambil data order Indodax.');
-    } finally {
-      setOrderLoading(false);
-    }
-  }, [formatPrice, orderCooldownUntil, toPairId]);
+  const gradeACheapList = useMemo(() => {
+    return pumpMathList
+      .filter((item) => item.coin.last < 1_000 && item.convictionLabel === 'A')
+      .map((item) => ({
+        pair: item.coin.pair,
+        last: item.coin.last,
+        entry: item.coin.entry,
+        tp: item.coin.tp,
+        status: item.coin.pricePhase === 'sudah_telanjur_naik' ? 'Sudah telanjur pump' : 'Belum telanjur pump',
+        isPumped: item.coin.pricePhase === 'sudah_telanjur_naik',
+        rr: item.rrLive,
+        momentum: item.momentumPct,
+      }));
+  }, [pumpMathList]);
 
   const topPickInsight = useMemo(() => {
     if (topPicks.length === 0) {
       return {
-        summary: 'Belum ada kandidat akurat untuk buy & hold.',
-        action: 'Tahan entry besar, siapkan dana dan tunggu skor tertinggi berikutnya.',
+        summary: 'No strong buy-and-hold candidates yet.',
+        action: 'Hold off on big entries, keep funds ready, and wait for the next top score.',
       };
     }
 
     const leader = topPicks[0];
     return {
-      summary: `${leader.asset} skor ${Math.round(leader.score)} (${leader.direction}), target ${formatPrice(
+      summary: `${leader.asset} score ${Math.round(leader.score)} (${leader.direction}), target ${formatPrice(
         leader.tp
       )}.`,
-      action: `Fokus beli ${leader.asset} di ${formatPrice(leader.entry)}, tahan sampai TP ${formatPrice(
+      action: `Focus on buying ${leader.asset} at ${formatPrice(leader.entry)}, hold until TP ${formatPrice(
         leader.tp
-      )}; disiplin SL ${formatPrice(leader.sl)}.`,
+      )}; stay disciplined with SL ${formatPrice(leader.sl)}.`,
     };
   }, [formatPrice, topPicks]);
 
   const drawdownInsight = useMemo(() => {
     if (pumpList.length === 0) {
       return {
-        summary: 'Belum ada posisi aktif yang perlu diselamatkan.',
-        actions: ['Tunggu sinyal mau pump berikutnya sebelum entry.'],
+        summary: 'No active positions need rescue.',
+        actions: ['Wait for the next about-to-pump signal before entering.'],
         items: [] as {
           pair: string;
           pnlPct: number;
@@ -1516,28 +1167,28 @@ export default function HomePage() {
 
       if (pnlPct < 0 && toSlPct <= 5) {
         status = 'danger';
-        headline = `${baseLine} (mepet SL)`;
-        guidance = `Segera kunci rugi ringan, hindari nyangkut lebih dalam. Geser SL ke ${formatPrice(
+        headline = `${baseLine} (near SL)`;
+        guidance = `Lock the small loss quickly to avoid deeper bagholding. Move SL to ${formatPrice(
           coin.sl
-        )} atau keluar bertahap.`;
+        )} or scale out.`;
       } else if (pnlPct < 0) {
         status = 'caution';
-        headline = `${baseLine} (minus)`;
-        guidance = `Entry belum mencapai TP; cicil keluar atau tunggu retest dekat ${formatPrice(
+        headline = `${baseLine} (negative)`;
+        guidance = `Entry has not hit TP; scale out or wait for a retest near ${formatPrice(
           coin.entry
-        )} lalu disiplin CL jika gagal tembus.`;
+        )} and cut losses if it fails to break.`;
       } else if (toTpPct <= 6) {
         status = 'ok';
-        headline = `${baseLine} (dekat TP)`;
-        guidance = `Kunci profit: realisasi sebagian, geser SL ke ${formatPrice(
+        headline = `${baseLine} (near TP)`;
+        guidance = `Lock profit: realize a portion and slide SL to ${formatPrice(
           coin.entry
-        )} agar tidak balik minus.`;
+        )} to avoid flipping negative.`;
       } else {
         status = 'watch';
-        headline = `${baseLine} (stabil)`;
-        guidance = `Tahan sambil pantau volume. Hindari tambah entry jika harga sudah ${formatPrice(
+        headline = `${baseLine} (stable)`;
+        guidance = `Hold while monitoring volume. Avoid adding entries if price is already ${formatPrice(
           coin.entry * 1.04
-        )} atau lebih.`;
+        )} or higher.`;
       }
 
       return { pair: coin.pair, pnlPct, toTpPct, toSlPct, status, headline, guidance };
@@ -1548,23 +1199,23 @@ export default function HomePage() {
     const nearTp = items.filter((item) => item.status === 'ok');
 
     const summaryParts = [
-      `${losers.length} posisi minus`,
-      `${nearSl.length} mepet SL`,
-      `${nearTp.length} siap TP`,
+      `${losers.length} positions negative`,
+      `${nearSl.length} near SL`,
+      `${nearTp.length} near TP`,
     ];
 
     const actions: string[] = [];
     if (nearSl.length > 0) {
-      actions.push('Prioritas: amankan posisi yang mepet SL, jangan tunggu makin dalam.');
+      actions.push('Priority: secure positions that are close to SL; do not wait for deeper losses.');
     }
     if (losers.length > 0) {
-      actions.push('Cicil keluar pada posisi minus, baru tambah entry setelah ada konfirmasi break.');
+      actions.push('Scale out of losing positions; only add entries after a confirmed break.');
     }
     if (nearTp.length > 0) {
-      actions.push('Lock profit sebagian di posisi yang sudah dekat TP.');
+      actions.push('Lock partial profit on positions already near TP.');
     }
     if (actions.length === 0) {
-      actions.push('Semua posisi stabil, lanjut pantau volume dan range.');
+      actions.push('All positions are stable; keep monitoring volume and range.');
     }
 
     const priority: Record<typeof items[number]['status'], number> = {
@@ -1588,14 +1239,14 @@ export default function HomePage() {
   const radarInsight = useMemo(() => {
     if (warnings.length === 0) {
       return {
-        summary: 'Belum ada peringatan aktif, radar standby.',
-        action: 'Pantau trigger baru sebelum eksekusi entry.',
+        summary: 'No active alerts—radar on standby.',
+        action: 'Watch for a new trigger before executing entries.',
       };
     }
 
     const latest = warnings[warnings.length - 1];
     return {
-      summary: `${warnings.length} koin diawasi; terbaru ${latest.pair.toUpperCase()} (${latest.label}).`,
+      summary: `${warnings.length} coins under watch; latest ${latest.pair.toUpperCase()} (${latest.label}).`,
       action: `${latest.label}: ${latest.note}`,
     };
   }, [warnings]);
@@ -1603,10 +1254,10 @@ export default function HomePage() {
   const newsInsight = useMemo(() => {
     if (news.length === 0) {
       return {
-        summary: 'Belum ada berita yang mencolok.',
-        action: 'Tunggu kabar kuat untuk cari harga rendah.',
-        biasLabel: 'Netral',
-        biasDetail: 'Belum ada data untuk menentukan bias sentimen.',
+        summary: 'No standout news yet.',
+        action: 'Wait for strong headlines before buying dips.',
+        biasLabel: 'Neutral',
+        biasDetail: 'Not enough data to determine sentiment bias.',
       };
     }
 
@@ -1627,7 +1278,7 @@ export default function HomePage() {
     const summaryParts = [
       `${sentimentCount.bullish} bullish`,
       `${sentimentCount.bearish} bearish`,
-      `${sentimentCount.neutral} netral`,
+      `${sentimentCount.neutral} neutral`,
     ];
 
     const weightedScore = news.reduce((acc, item) => {
@@ -1645,22 +1296,22 @@ export default function HomePage() {
             ? 'bullish'
             : sentimentCount.bearish > sentimentCount.bullish
               ? 'bearish'
-              : 'netral';
+              : 'neutral';
 
-    const biasLabel = dominant === 'bullish' ? 'Bull' : dominant === 'bearish' ? 'Bear' : 'Netral';
-    const biasDetail = `Bias ${biasLabel} (skor ${(weightedScore >= 0 ? '+' : '') + weightedScore.toFixed(1)}): ${summaryParts.join(
+    const biasLabel = dominant === 'bullish' ? 'Bull' : dominant === 'bearish' ? 'Bear' : 'Neutral';
+    const biasDetail = `Bias ${biasLabel} (score ${(weightedScore >= 0 ? '+' : '') + weightedScore.toFixed(1)}): ${summaryParts.join(
       ' / '
-    )}${topAsset ? `; ${topAsset} paling sering disebut.` : ''}`;
+    )}${topAsset ? `; ${topAsset} mentioned most often.` : ''}`;
 
-    const summary = `Sentimen ${summaryParts.join(' / ')}; ${
-      topAsset ? `${topAsset} paling sering disebut.` : 'pantau aset terkait.'
+    const summary = `Sentiment ${summaryParts.join(' / ')}; ${
+      topAsset ? `${topAsset} mentioned most often.` : 'watch related assets.'
     }`;
     const action =
       dominant === 'bullish'
-        ? `Cari diskon untuk masuk ${topAsset ?? 'aset yang ramai disebut'}; siap TP bertahap.`
+        ? `Hunt for discounts to enter ${topAsset ?? 'the most-mentioned assets'}; be ready to take profit in stages.`
         : dominant === 'bearish'
-          ? `Hindari entry agresif di ${topAsset ?? 'aset rentan'}, fokus proteksi posisi.`
-          : 'Tunggu katalis baru; hanya masuk pada aset dengan trigger jelas.';
+          ? `Avoid aggressive entries on ${topAsset ?? 'vulnerable assets'}; focus on protecting positions.`
+          : 'Wait for new catalysts; only enter assets with clear triggers.';
 
     return { summary, action, biasLabel, biasDetail };
   }, [news]);
@@ -1668,30 +1319,30 @@ export default function HomePage() {
   const predictionInsight = useMemo(() => {
     if (predictions.length === 0) {
       return {
-        summary: 'Prediksi mingguan belum tersedia.',
-        action: 'Tunggu aset dengan confidence tinggi sebelum entry swing.',
+        summary: 'Weekly predictions are not available yet.',
+        action: 'Wait for assets with high confidence before entering swing trades.',
       };
     }
 
     const strongest = [...predictions].sort((a, b) => b.confidence - a.confidence)[0];
     return {
       summary: `${strongest.asset} confidence ${strongest.confidence}% (${strongest.direction}).`,
-      action: `Ikuti: ${strongest.suggestedAction}`,
+      action: `Follow: ${strongest.suggestedAction}`,
     };
   }, [predictions]);
 
   const pumpInsight = useMemo(() => {
     if (pumpList.length === 0) {
       return {
-        summary: 'Belum ada kandidat mau pump aktif.',
-        action: 'Tunggu sinyal hijau berikutnya sebelum entry.',
+        summary: 'No active about-to-pump candidates.',
+        action: 'Wait for the next green signal before entering.',
       };
     }
 
     const focus = selected ?? pumpList[0];
     return {
-      summary: `${pumpList.length} koin mau pump; fokus ${focus.pair.toUpperCase()}.`,
-      action: `Langsung cek ${focus.pair.toUpperCase()}, entry ${formatPrice(
+      summary: `${pumpList.length} coins about to pump; focus on ${focus.pair.toUpperCase()}.`,
+      action: `Check ${focus.pair.toUpperCase()} now, entry ${formatPrice(
         focus.entry
       )}, target TP ${formatPrice(focus.tp)}, SL ${formatPrice(focus.sl)}.`,
     };
@@ -1700,16 +1351,16 @@ export default function HomePage() {
   const pumpMathInsight = useMemo(() => {
     if (pumpMathList.length === 0) {
       return {
-        summary: 'Belum ada kalkulasi detil karena tidak ada koin mau pump.',
-        action: 'Tunggu sinyal mau pump untuk melihat RR live dan jarak TP/SL.',
+        summary: 'No detailed calculations yet because no coins are about to pump.',
+        action: 'Wait for an about-to-pump signal to view live RR and TP/SL distances.',
       };
     }
 
     const leader = pumpMathList[0];
     return {
-      summary: `${leader.coin.pair.toUpperCase()} RR live ${leader.rrLive.toFixed(2)}; upside ${
+      summary: `${leader.coin.pair.toUpperCase()} live RR ${leader.rrLive.toFixed(2)}; upside ${
         leader.upsidePct.toFixed(1)
-      }% vs risiko ${leader.downsidePct.toFixed(1)}%.`,
+      }% vs risk ${leader.downsidePct.toFixed(1)}%.`,
       action: leader.actionLine,
     };
   }, [pumpMathList]);
@@ -1717,16 +1368,16 @@ export default function HomePage() {
   const btcMarketSummary = useMemo(() => {
     const { bias, horizon, horizonWindow, support, resistance, last } = btcContext;
 
-    let line = 'Belum ada data BTC terkini.';
-    let caution = 'Tunggu data harga untuk menentukan level kunci.';
-    let action = 'Pantau BTC lebih dulu sebelum eksekusi aset lain.';
+    let line = 'No fresh BTC data yet.';
+    let caution = 'Wait for price data to define key levels.';
+    let action = 'Watch BTC first before executing other assets.';
 
     if (support && resistance && last) {
       const supportLabel = formatRupiah(support);
       const resistanceLabel = formatRupiah(resistance);
-      const biasLabel = bias === 'bullish' ? 'Bull' : bias === 'bearish' ? 'Bear' : 'Netral';
+      const biasLabel = bias === 'bullish' ? 'Bull' : bias === 'bearish' ? 'Bear' : 'Neutral';
 
-      line = `${biasLabel} ${horizon} (${horizonWindow.untilLabel}); support ${supportLabel}, resist ${resistanceLabel}.`;
+      line = `${biasLabel} ${horizon} (${horizonWindow.untilLabel}); support ${supportLabel}, resistance ${resistanceLabel}.`;
 
       const nearSupport = last <= support * 1.01;
       const nearResistance = last >= resistance * 0.99;
@@ -1734,23 +1385,23 @@ export default function HomePage() {
       const breakdown = last < support * 0.99;
 
       if (breakout) {
-        caution = `Harga sudah melewati resist ${resistanceLabel}, peluang lanjut ${bias === 'bearish' ? 'netral/bull' : 'bull'} selama volume kuat.`;
+        caution = `Price has broken past resistance ${resistanceLabel}; potential to continue ${bias === 'bearish' ? 'to neutral/bullish' : 'bullish'} while volume stays strong.`;
       } else if (breakdown) {
-        caution = `Turun di bawah support ${supportLabel}; hati-hati kelanjutan bear hingga ada reclaim.`;
+        caution = `Dropped below support ${supportLabel}; beware of continued bearish action until reclaimed.`;
       } else if (nearResistance) {
-        caution = `Mepet resist ${resistanceLabel}; hindari entry FOMO, siapkan take profit defensif.`;
+        caution = `Hovering near resistance ${resistanceLabel}; avoid FOMO entries and prepare defensive take-profit.`;
       } else if (nearSupport) {
-        caution = `Menempel support ${supportLabel}; waspadai pantulan lemah atau potensi tembus.`;
+        caution = `Sitting on support ${supportLabel}; watch for weak bounces or potential breaks.`;
       } else {
-        caution = `Masih di range ${supportLabel} - ${resistanceLabel}; tunggu tembus area sebelum agresif.`;
+        caution = `Still ranging ${supportLabel} - ${resistanceLabel}; wait for a break before getting aggressive.`;
       }
 
       action =
         bias === 'bullish'
-          ? `Fokus buy the dip dekat ${supportLabel} dan tahan sampai konfirmasi tembus ${resistanceLabel}.`
+          ? `Focus on buy-the-dip near ${supportLabel} and hold until a confirmed break of ${resistanceLabel}.`
           : bias === 'bearish'
-            ? `Prioritaskan proteksi; kalau gagal reclaim ${supportLabel}, siapkan CL cepat dan hindari entry baru.`
-            : `Netral; tunggu arah jelas di atas ${resistanceLabel} untuk bull atau di bawah ${supportLabel} untuk bear.`;
+            ? `Prioritize protection; if ${supportLabel} cannot be reclaimed, be ready to cut quickly and avoid new entries.`
+            : `Neutral; wait for clear direction above ${resistanceLabel} for bull or below ${supportLabel} for bear.`;
     }
 
     return { line, caution, action };
@@ -1759,22 +1410,22 @@ export default function HomePage() {
   const bestTodaySummary = useMemo(() => {
     if (topPicks.length === 0) {
       return {
-        headline: 'Belum ada koin paling akurat untuk dieksekusi hari ini.',
-        action: 'Tunggu rekomendasi baru dengan skor tinggi sebelum masuk.',
+        headline: 'No top-accuracy coin to execute today yet.',
+        action: 'Wait for a new high-score recommendation before entering.',
       };
     }
 
     const leader = topPicks[0];
     const horizonWindow = describeHorizonWindow(leader.horizon);
-    const dirLabel = leader.direction === 'bullish' ? 'Bull' : leader.direction === 'bearish' ? 'Bear' : 'Netral';
+    const dirLabel = leader.direction === 'bullish' ? 'Bull' : leader.direction === 'bearish' ? 'Bear' : 'Neutral';
 
     return {
       headline: `${leader.asset} ${dirLabel} ${leader.confidence}% (${leader.horizon}, ${horizonWindow.untilLabel}). Entry ${formatPrice(
         leader.entry
       )}, TP ${formatPrice(leader.tp)}, SL ${formatPrice(leader.sl)}.`,
-      action: `Eksekusi ${leader.asset} hari ini, tahan sampai ${horizonWindow.untilLabel} atau TP ${formatPrice(
+      action: `Execute ${leader.asset} today, hold until ${horizonWindow.untilLabel} or TP ${formatPrice(
         leader.tp
-      )}; hindari kejar harga di atas ${formatPrice(leader.entry * 1.04)}.`,
+      )}; avoid chasing above ${formatPrice(leader.entry * 1.04)}.`,
     };
   }, [describeHorizonWindow, formatPrice, topPicks]);
 
@@ -1786,32 +1437,32 @@ export default function HomePage() {
       entry: coin.entry,
       tp: coin.tp,
       sl: coin.sl,
-      direction: coin.pricePhase === 'baru_mau_naik' ? 'bullish' : 'netral',
-      horizon: '1-3 hari',
+      direction: coin.pricePhase === 'baru_mau_naik' ? 'bullish' : 'neutral',
+      horizon: '1-3 days',
     }));
 
     const picks = (pumpPickCandidates.length ? pumpPickCandidates : fallbackFromPumpList).slice(0, 2);
 
     if (picks.length === 0) {
       return {
-        headline: 'Belum ada top pick pump untuk dieksekusi hari ini.',
+        headline: 'No top pump pick to execute today.',
         items: [],
-        action: 'Pantau radar sampai ada koin pump yang siap dieksekusi.',
+        action: 'Watch the radar until a pump coin is ready to execute.',
       };
     }
 
     const items = picks.map((pick) => {
-      const horizonWindow = describeHorizonWindow(pick.horizon ?? '1-3 hari');
+      const horizonWindow = describeHorizonWindow(pick.horizon ?? '1-3 days');
       const dirLabel = pick.direction === 'bearish' ? 'Bear' : 'Bull';
-      return `${pick.asset} ${dirLabel} sampai ${horizonWindow.untilLabel}: entry ${formatPrice(pick.entry)}, TP ${formatPrice(
+      return `${pick.asset} ${dirLabel} until ${horizonWindow.untilLabel}: entry ${formatPrice(pick.entry)}, TP ${formatPrice(
         pick.tp
       )}, SL ${formatPrice(pick.sl)}.`;
     });
 
     return {
-      headline: `${picks.length} top pick pump hari ini siap dieksekusi.`,
+      headline: `${picks.length} top pump picks are ready to execute today.`,
       items,
-      action: 'Prioritaskan dua koin pump ini lebih dulu sebelum masuk pasangan lain.',
+      action: 'Prioritize these pump coins before entering other pairs.',
     };
   }, [describeHorizonWindow, formatPrice, normalizeAssetFromPair, pumpList, topPicks]);
 
@@ -1821,8 +1472,8 @@ export default function HomePage() {
       const fallback = pumpList.slice(0, 2).map((coin) => ({
         pair: coin.pair,
         asset: normalizeAssetFromPair(coin.pair),
-        direction: coin.pricePhase === 'baru_mau_naik' ? 'bullish' : 'netral',
-        horizon: '1-3 hari',
+        direction: coin.pricePhase === 'baru_mau_naik' ? 'bullish' : 'neutral',
+        horizon: '1-3 days',
       }));
       const picks = (prioritized.length ? prioritized : fallback).slice(0, 2);
 
@@ -1833,37 +1484,37 @@ export default function HomePage() {
 
           const posPct = Math.max(0, Math.min(100, coin.posInRange * 100));
           const momentum = coin.moveFromLowPct.toFixed(1);
-          const rrNote = coin.rr >= 2 ? 'RR bagus' : coin.rr >= 1.6 ? 'RR cukup' : 'RR terbatas';
+          const rrNote = coin.rr >= 2 ? 'Strong RR' : coin.rr >= 1.6 ? 'Solid RR' : 'Limited RR';
           const zone =
             posPct >= 75
-              ? 'dekat high harian (awas overheat)'
+              ? 'near daily high (watch overheating)'
               : posPct <= 40
-                ? 'masih dekat low (siap akumulasi)'
-                : 'zona tengah';
-          const horizonWindow = describeHorizonWindow(pick.horizon ?? '1-3 hari');
-          const biasLabel = pick.direction === 'bearish' ? 'Bear' : pick.direction === 'netral' ? 'Netral' : 'Bull';
+                ? 'near daily low (ready to accumulate)'
+                : 'mid-range';
+          const horizonWindow = describeHorizonWindow(pick.horizon ?? '1-3 days');
+          const biasLabel = pick.direction === 'bearish' ? 'Bear' : pick.direction === 'neutral' ? 'Neutral' : 'Bull';
           const progression =
             coin.last >= coin.tp * 0.98
-              ? 'Dekat TP utama, siapkan realisasi profit bertahap.'
+              ? 'Near the primary TP—plan staged profit taking.'
               : coin.last <= coin.entry * 0.98
-                ? 'Masih di bawah/sekitar entry, peluang akumulasi terbuka.'
-                : 'Di atas entry, lanjutkan hold dengan pengawasan volume.';
+                ? 'Still below/around entry—accumulation opportunity is open.'
+                : 'Above entry—continue holding while monitoring volume.';
 
           const rangeWidthPct = ((coin.high - coin.low) / coin.last) * 100;
           const support = formatPrice(coin.low);
           const resistance = formatPrice(coin.high);
 
           const detailPoints = [
-            `${biasLabel} sampai ${horizonWindow.untilLabel} · RR ${coin.rr.toFixed(2)} · range ${rangeWidthPct
+            `${biasLabel} until ${horizonWindow.untilLabel} · RR ${coin.rr.toFixed(2)} · range ${rangeWidthPct
               .toFixed(1)}% (vol ${formatPrice(coin.volIdr)} IDR).`,
-            `Harga ${formatPrice(coin.last)} IDR di ${posPct.toFixed(1)}% rentang 24j (${zone}); support ${support}, resist ${resistance}.`,
-            `Momentum dari low ${momentum}% · Entry ${formatPrice(coin.entry)} · TP ${formatPrice(coin.tp)} · SL ${formatPrice(coin.sl)}.`,
+            `Price ${formatPrice(coin.last)} IDR at ${posPct.toFixed(1)}% of the 24h range (${zone}); support ${support}, resistance ${resistance}.`,
+            `Momentum from low ${momentum}% · Entry ${formatPrice(coin.entry)} · TP ${formatPrice(coin.tp)} · SL ${formatPrice(coin.sl)}.`,
             progression,
           ];
 
           return {
             coin,
-            brief: `${pick.asset} ${biasLabel} sampai ${horizonWindow.untilLabel}: ${momentum}% dari low 24j, ${rrNote}, posisi ${posPct.toFixed(
+            brief: `${pick.asset} ${biasLabel} until ${horizonWindow.untilLabel}: ${momentum}% from 24h low, ${rrNote}, position ${posPct.toFixed(
               1
             )}% (${zone}).`,
             action: `Entry ${formatPrice(coin.entry)} · TP ${formatPrice(coin.tp)} · SL ${formatPrice(coin.sl)} · ${progression}`,
@@ -1879,49 +1530,49 @@ export default function HomePage() {
     () => [
       {
         id: 'priority',
-        title: 'Prioritas Buy & Hold',
+        title: 'Buy & Hold Priority',
         summary: topPickInsight.summary,
         action: topPickInsight.action,
       },
       {
         id: 'risk',
-        title: 'Anti-Mines & Recovery',
+        title: 'Anti-Bag & Recovery',
         summary: drawdownInsight.summary,
-        action: drawdownInsight.actions[0] ?? 'Kunci rugi kecil, hindari nyangkut.',
+        action: drawdownInsight.actions[0] ?? 'Lock small losses and avoid getting stuck.',
       },
       {
         id: 'pump-math',
-        title: 'Lab Hitung Mau Pump',
+        title: 'Pump Math Lab',
         summary: pumpMathInsight.summary,
         action: pumpMathInsight.action,
       },
       {
         id: 'radar',
-        title: 'Radar Peringatan Pump',
+        title: 'Pump Alert Radar',
         summary: radarInsight.summary,
         action: radarInsight.action,
       },
       {
         id: 'news',
-        title: 'Berita & Sentimen',
+        title: 'News & Sentiment',
         summary: newsInsight.summary,
         action: newsInsight.action,
       },
       {
         id: 'predictions',
-        title: 'Prediksi 1 Minggu',
+        title: '1-Week Predictions',
         summary: predictionInsight.summary,
         action: predictionInsight.action,
       },
       {
         id: 'pump-list',
-        title: 'Daftar Mau Pump',
+        title: 'About to Pump List',
         summary: pumpInsight.summary,
         action: pumpInsight.action,
       },
       {
         id: 'table',
-        title: 'Tabel Detail',
+        title: 'Detail Table',
         summary: pumpInsight.summary,
         action: pumpInsight.action,
       },
@@ -1929,15 +1580,26 @@ export default function HomePage() {
     [drawdownInsight, newsInsight, predictionInsight, pumpInsight, pumpMathInsight, radarInsight, topPickInsight]
   );
 
+  if (!authChecked) {
+    return (
+      <main className="pin-gate">
+        <div className="pin-card">
+          <h1>Verifying access...</h1>
+          <p className="muted">Loading saved permissions.</p>
+        </div>
+      </main>
+    );
+  }
+
   if (!isAuthorized) {
     return (
       <main className="pin-gate">
         <div className="pin-card">
-          <h1>Akses SINTA Crypto Detector</h1>
-          <p className="muted">Masukkan PIN untuk membuka dashboard.</p>
+          <h1>Access SINTA Crypto Detector</h1>
+          <p className="muted">Enter the PIN to unlock the dashboard.</p>
 
           <form className="pin-form" onSubmit={handlePinSubmit}>
-            <label htmlFor="pin-input">PIN akses</label>
+            <label htmlFor="pin-input">Access PIN</label>
             <input
               id="pin-input"
               type="password"
@@ -1946,12 +1608,12 @@ export default function HomePage() {
               autoComplete="one-time-code"
               value={pinInput}
               onChange={(event) => setPinInput(event.target.value)}
-              placeholder="Masukkan PIN 6 digit"
+              placeholder="Enter 6-digit PIN"
               className={pinError ? 'has-error' : ''}
             />
             {pinError && <div className="error-text">{pinError}</div>}
             <button type="submit" className="button">
-              Buka akses
+              Unlock
             </button>
           </form>
         </div>
@@ -1972,26 +1634,26 @@ export default function HomePage() {
             disabled={loading}
             className="button"
           >
-            {loading ? 'Memuat...' : 'Refresh data'}
+            {loading ? 'Loading...' : 'Refresh data'}
           </button>
         </div>
       </header>
 
       <section className="market-brief section-card accent-market">
         <div className="market-brief-head">
-          <div className="market-brief-label">Ringkasan BTC/USD</div>
-          <div className="market-brief-pill">Kesimpulan gabungan</div>
+          <div className="market-brief-label">BTC/USD Summary</div>
+          <div className="market-brief-pill">Combined takeaway</div>
         </div>
         <div className="market-brief-body">
           <div className="market-brief-main">{btcMarketSummary.line}</div>
           <div className="market-brief-hint">{btcMarketSummary.caution}</div>
           <div className="market-brief-action">{btcMarketSummary.action}</div>
           <div className="market-brief-divider" />
-          <div className="market-brief-subhead">Top pick eksekusi hari ini</div>
+          <div className="market-brief-subhead">Top pick to execute today</div>
           <div className="market-brief-main">{bestTodaySummary.headline}</div>
           <div className="market-brief-action">{bestTodaySummary.action}</div>
           <div className="market-brief-divider" />
-          <div className="market-brief-subhead">Top pick pump hari ini</div>
+          <div className="market-brief-subhead">Top pump pick today</div>
           <div className="market-brief-main">{bestPumpTodaySummary.headline}</div>
           {bestPumpTodaySummary.items.length > 0 && (
             <ul className="market-brief-list">
@@ -2009,21 +1671,21 @@ export default function HomePage() {
       <div className="layout-shell">
         <div className="layout-with-sidebar">
           <aside className="sidebar-menu">
-            <h3>Menu Navigasi</h3>
+            <h3>Navigation Menu</h3>
             <ul>
               {menuSections.map((section) => (
                 <li key={section.id} className={`sidebar-menu-item accent-${section.id}`}>
                   <a href={`#${section.id}`} className="sidebar-menu-link">
                     <div className="sidebar-menu-title-row">
                       <div className="sidebar-menu-title">{section.title}</div>
-                      <span className="sidebar-chip">Aksi cepat</span>
+                      <span className="sidebar-chip">Quick action</span>
                     </div>
                     <div className="sidebar-meta">
-                      <span className="sidebar-label">Kesimpulan</span>
+                      <span className="sidebar-label">Summary</span>
                       <div className="sidebar-menu-summary">{section.summary}</div>
                     </div>
                     <div className="sidebar-meta">
-                      <span className="sidebar-label accent">Saran</span>
+                      <span className="sidebar-label accent">Advice</span>
                       <div className="sidebar-menu-action">{section.action}</div>
                     </div>
                   </a>
@@ -2036,16 +1698,16 @@ export default function HomePage() {
             <section id="priority" className="priority-section section-card accent-priority">
             <div className="priority-header">
               <div>
-                <h2>Prioritas Buy & Hold sampai TP</h2>
+                <h2>Buy & Hold Priority to TP</h2>
                 <p className="muted">
-                  Menggabungkan sinyal mau pump + prediksi mingguan + RR untuk menyorot koin paling akurat dipegang hingga TP.
+                  Combines about-to-pump signals, weekly predictions, and RR to spotlight the most reliable coins to hold through TP.
                 </p>
               </div>
-              <span className="badge badge-strong">Live terhubung prediksi & sinyal</span>
+              <span className="badge badge-strong">Live with predictions & signals</span>
             </div>
 
             {topPicks.length === 0 ? (
-              <div className="empty-state small">Menunggu sinyal & prediksi menyatu. Segera muncul begitu data siap.</div>
+              <div className="empty-state small">Waiting for signals and predictions to align. They will appear once data is ready.</div>
             ) : (
               <div className="priority-grid">
                 {topPicks.map((pick) => (
@@ -2097,12 +1759,12 @@ export default function HomePage() {
           <section id="risk" className="section-card accent-risk">
             <div className="section-head">
               <div>
-                <h3>Anti-Mines & Recovery Plan</h3>
+                <h3>Anti-Bag & Recovery Plan</h3>
                 <p className="muted">
-                  Cek posisi yang belum kena TP supaya tidak berubah jadi minus terlalu dalam.
+                  Review positions that have not hit TP so they do not turn into deep losses.
                 </p>
               </div>
-              <span className="badge badge-danger">Proteksi</span>
+              <span className="badge badge-danger">Protection</span>
             </div>
 
             <div className="risk-grid">
@@ -2117,7 +1779,7 @@ export default function HomePage() {
 
               <div className="risk-list">
                 {drawdownInsight.items.length === 0 ? (
-                  <div className="empty-state small">Belum ada posisi mau pump yang perlu dipantau.</div>
+                  <div className="empty-state small">No about-to-pump positions need monitoring yet.</div>
                 ) : (
                   <ul>
                     {drawdownInsight.items.map((item) => (
@@ -2141,368 +1803,167 @@ export default function HomePage() {
           <section id="pump-math" className="section-card accent-math">
             <div className="section-head">
               <div>
-                <h3>Lab Hitung Mau Pump</h3>
+                <h3>Pump Math Lab</h3>
                 <p className="muted">
-                  Bahasa singkat: seberapa yakin % mau pump, kenapa layak dibeli, kapan boleh beli dulu/cicil, dan poin hati-hati.
+                  Live calculations for RR, TP/SL distance, gap to entry, range heat, sideways history, BTC effect, and mini upside/downside chart to increase execution confidence.
                 </p>
               </div>
-              <div className="section-actions">
-                <button
-                  className="refresh-btn"
-                  type="button"
-                  onClick={() => {
-                    fetchData();
-                    setNowTs(Date.now());
-                  }}
-                >
-                  Refresh
-                </button>
-                <span className="badge badge-strong">Angka real-time</span>
-              </div>
+              <span className="badge badge-strong">Real-time numbers</span>
             </div>
 
             {pumpMathList.length === 0 ? (
-              <div className="empty-state small">Menunggu sinyal mau pump untuk dihitung.</div>
+              <div className="empty-state small">Waiting for an about-to-pump signal to calculate.</div>
             ) : (
-              <div className="pump-math-grid">
-                {pumpMathList.slice(0, 12).map((item) => renderPumpMathCard(item))}
-              </div>
-            )}
-          </section>
-
-          <section id="pump-order" className="section-card accent-math">
-            <div className="section-head">
-              <div>
-                <h3>Deteksi Pump Order (Indodax)</h3>
-                <p className="muted">
-                  Deteksi awal berdasarkan volume, orderbook, dan aliran trades (buy/sell) untuk melihat tekanan beli sebelum pump.
-                </p>
-              </div>
-              <div className="section-actions">
-                <button
-                  className="refresh-btn"
-                  type="button"
-                  onClick={handleOrderScan}
-                  disabled={orderLoading || (orderCooldownUntil ? Date.now() < orderCooldownUntil : false)}
-                >
-                  Prediksi Koin Potensi Pump
-                </button>
-                <span className="badge badge-neutral">Orderbook & Trades</span>
-              </div>
-            </div>
-
-            {orderLoading ? (
-              <div className="empty-state small">Memuat data orderbook & trades...</div>
-            ) : orderError ? (
-              <div className="empty-state small">{orderError}</div>
-            ) : orderSignals.length === 0 ? (
-              <div className="empty-state small">Belum ada kandidat order pump yang kuat.</div>
-            ) : (
-              <div className="pump-system-table-wrap">
-                {orderLastUpdate && (
-                  <div className="safe-sub">Update terakhir: {new Date(orderLastUpdate).toLocaleTimeString('id-ID')}</div>
-                )}
-                <table className="pump-system-table">
-                  <thead>
-                    <tr>
-                      <th>Pair</th>
-                      <th>Skor</th>
-                      <th>Entry / TP / SL</th>
-                      <th>Buy/Sell</th>
-                      <th>Flow Buy</th>
-                      <th>Wall</th>
-                      <th>Catatan</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {orderSignals.slice(0, 10).map((item) => (
-                      <tr key={`order-${item.pair}`}>
-                        <td>
-                          <div className="safe-token">{item.pair.toUpperCase()}</div>
-                          <div className="safe-sub">Harga {formatPrice(item.last)}</div>
-                        </td>
-                        <td>
-                          <div className="safe-score">{item.score}</div>
-                          <div className="safe-sub">{item.action}</div>
-                        </td>
-                        <td>
-                          <div className="safe-score">Entry {formatPrice(item.entry)}</div>
-                          <div className="safe-sub">TP {formatPrice(item.tp)} • SL {formatPrice(item.sl)}</div>
-                        </td>
-                        <td>
-                          <div className="safe-score">{item.buySellRatio.toFixed(2)}x</div>
-                          <div className="safe-sub">Spread {item.spreadPct.toFixed(2)}%</div>
-                        </td>
-                        <td>
-                          <div className="safe-score">{(item.buyRatioVolume * 100).toFixed(0)}%</div>
-                          <div className="safe-sub">{(item.buyRatioTrades * 100).toFixed(0)}% trades</div>
-                        </td>
-                        <td>
-                          <div className="safe-reason">{item.wallNote}</div>
-                          <div className="safe-sub">Buy wall {formatPrice(item.topBuyPrice)} • Sell wall {formatPrice(item.topSellPrice)}</div>
-                        </td>
-                        <td>
-                          <div className="safe-sub">{item.reason}</div>
-                          <div className="safe-sub">{item.tradeHint}</div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-
-          <section id="pump-system" className="section-card accent-math">
-            <div className="section-head">
-              <div>
-                <h3>Deteksi Pump Tinggi (Indodax)</h3>
-                <p className="muted">
-                  Hasil deteksi live berdasarkan data ticker Indodax dan rumus skor lengkap.
-                </p>
-              </div>
-              <span className="badge badge-neutral">Deteksi live</span>
-            </div>
-
-            <div className="pump-system-detect">
-              <div className="pump-system-title">Kandidat pump tinggi (termasuk persen kecil)</div>
-              {pumpMathList.filter((item) => item.upsidePct >= 5 && item.rrLive >= 1.3).length === 0 ? (
-                <div className="empty-state small">Belum ada kandidat pump tinggi yang memenuhi syarat.</div>
-              ) : (
-                <div className="pump-system-table-wrap">
-                  <table className="pump-system-table">
-                    <thead>
-                      <tr>
-                        <th>Pair</th>
-                        <th>Confidence</th>
-                        <th>Entry</th>
-                        <th>Keputusan</th>
-                        <th>Rumus skor</th>
-                        <th>Alasan singkat</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pumpMathList
-                        .filter((item) => item.upsidePct >= 5 && item.rrLive >= 1.3)
-                        .slice(0, 12)
-                        .map((item) => {
-                        const shouldWaitCorrection = item.entryGapPct > 3 && item.heatPct < 70;
-                        const action = item.isLate || shouldWaitCorrection ? 'Waiting' : 'Entry sekarang';
-                        const reason = item.isLate || shouldWaitCorrection
-                          ? `Gap ${item.entryGapPct.toFixed(1)}% • Heat ${item.heatPct.toFixed(1)}%`
-                          : `Momentum ${item.momentumPct.toFixed(1)}% • RR ${item.rrLive.toFixed(2)}x`;
-                        return (
-                          <tr key={`detect-${item.coin.pair}`}>
-                            <td>
-                              <div className="safe-token">{item.coin.pair.toUpperCase()}</div>
-                              <div className="safe-sub">Harga {formatPrice(item.coin.last)}</div>
-                            </td>
-                            <td>
-                              <div className="safe-score">{item.confidencePct}%</div>
-                              <div className="safe-sub">{item.convictionLabel}</div>
-                            </td>
-                            <td>
-                              <div className="safe-score">{formatPrice(item.coin.entry)}</div>
-                              <div className="safe-sub">SL {formatPrice(item.coin.sl)}</div>
-                            </td>
-                            <td>
-                              <div className="safe-score">{action}</div>
-                              <div className="safe-sub">TP {formatPrice(item.coin.tp)}</div>
-                            </td>
-                            <td>
-                              <div className="safe-reason">
-                                Rumus: Vol {item.volumeScore.toFixed(0)} + RR {item.rrScore.toFixed(0)} + Setup{' '}
-                                {item.setupScore.toFixed(0)} + Mom {item.momentumScore.toFixed(0)}
-                              </div>
-                              <div className="safe-sub">Skor total {item.score} • Edge {item.upsidePct.toFixed(1)}%</div>
-                            </td>
-                            <td>
-                              <div className="safe-reason">{reason}</div>
-                              <div className="safe-sub">{item.patternLabel}</div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section id="safe-detection" className="section-card accent-safe">
-            <div className="section-head">
-              <div>
-                <h3>INTI DETEKSI KOIN AMAN (SOLANA)</h3>
-                <p className="muted">
-                  Filter anti-noise untuk token Solana dari DexScreener. Monitoring aman, waiting, dan kandidat potensial di satu tempat.
-                </p>
-              </div>
-              <span className="badge badge-neutral">Safety + Momentum (longgar)</span>
-            </div>
-
-            {safeLoading ? (
-              <div className="empty-state small">Memuat kandidat aman...</div>
-            ) : safeError ? (
-              <div className="empty-state small">{safeError}</div>
-            ) : safeAlerts.length === 0 && safeWaiting.length === 0 && safeAll.length === 0 ? (
-              <div className="empty-state small">Belum ada kandidat “naik + aman”.</div>
-            ) : (
-              <>
-                {safeAlerts.length > 0 && (
-                  <div className="safe-table-wrap">
-                    <table className="safe-table">
-                      <thead>
-                        <tr>
-                          <th>Token (Confirmed)</th>
-                          <th>Skor</th>
-                          <th>Harga</th>
-                          <th>Performa 5m</th>
-                          <th>Volume/Liq</th>
-                          <th>Alasan lolos</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {safeAlerts.map((alert) => (
-                          <tr key={alert.pairAddress}>
-                            <td>
-                              <div className="safe-token">{alert.symbol}</div>
-                              <div className="safe-sub">{alert.dexId.toUpperCase()} • {alert.pairAddress.slice(0, 6)}...</div>
-                              <a className="safe-link" href={alert.url} target="_blank" rel="noreferrer">
-                                Buka DexScreener
-                              </a>
-                            </td>
-                            <td>
-                              <div className="safe-score">Safety {alert.safetyScore}</div>
-                              <div className="safe-sub">Momentum {alert.momentumScore}</div>
-                            </td>
-                            <td>
-                              <div className="safe-score">${alert.priceUsd.toFixed(6)}</div>
-                              <div className="safe-sub">Ratio {alert.ratio.toFixed(2)}</div>
-                            </td>
-                            <td>
-                              <div className="safe-score">{alert.pch5.toFixed(2)}%</div>
-                              <div className="safe-sub">Vol 5m {alert.vol5.toFixed(0)}</div>
-                            </td>
-                            <td>
-                              <div className="safe-score">${alert.liq.toFixed(0)}</div>
-                              <div className="safe-sub">Vol 1h {alert.vol1.toFixed(0)}</div>
-                            </td>
-                            <td>
-                              <div className="safe-reason">{alert.reasons.join(', ')}</div>
-                              <div className="safe-sub">{alert.tokenAddress.slice(0, 10)}...</div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                {safeWaiting.length > 0 && (
-                  <div className="safe-waiting">
-                    <div className="safe-waiting-title">Waiting list (menuju confirm)</div>
-                    <div className="safe-waiting-grid">
-                      {safeWaiting.map((item) => (
-                        <div key={item.pairAddress} className="safe-waiting-card">
-                          <div className="safe-waiting-head">
-                            <div className="safe-token">{item.symbol}</div>
-                            <div className="safe-score">Safety {item.safetyScore}</div>
-                          </div>
-                          <div className="safe-waiting-progress">
-                            Menuju confirm {item.confirmProgress ?? 0}%
-                          </div>
-                          <div className="safe-sub">Momentum {item.momentumScore} • {item.pch5.toFixed(2)}%</div>
-                          <div className="safe-sub">Liq ${item.liq.toFixed(0)} • Ratio {item.ratio.toFixed(2)}</div>
-                          <div className="safe-reason">{item.reasons.join(', ')}</div>
-                        </div>
-                      ))}
+            <div className="pump-math-grid">
+              {pumpMathList.slice(0, 4).map((item) => (
+                <div key={item.coin.pair} className={`pump-math-card bias-${item.bias}`}>
+                  <div className="pump-math-head">
+                    <div>
+                        <div className="pump-math-pair">{item.coin.pair.toUpperCase()}</div>
+                        <div className="pump-math-sub">Volume {formatter.format(item.coin.volIdr)} IDR</div>
+                      </div>
+                      <div className="pump-math-score">Skor {item.score}</div>
                     </div>
-                  </div>
-                )}
 
-                {displayedSafeAll.length > 0 && (
-                  <div className="safe-all-block">
-                    <div className="safe-waiting-title">Daftar semua koin aman</div>
-                    <div className="safe-table-wrap">
-                      <table className="safe-table">
-                        <thead>
-                          <tr>
-                            <th>Token</th>
-                            <th>Safety</th>
-                            <th>Harga</th>
-                            <th>Performa 5m</th>
-                            <th>Liquidity</th>
-                            <th>Info</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {displayedSafeAll.map((alert) => (
-                            <tr key={`safe-${alert.pairAddress}`}>
-                              <td>
-                                <div className="safe-token">{alert.symbol}</div>
-                                <div className="safe-sub">
-                                  {alert.dexId.toUpperCase()} • {alert.pairAddress.slice(0, 6)}...
-                                </div>
-                              </td>
-                              <td>
-                                <div className="safe-score">{alert.safetyScore}</div>
-                                <div className="safe-sub">Ratio {alert.ratio.toFixed(2)}</div>
-                              </td>
-                              <td>
-                                <div className="safe-score">${alert.priceUsd.toFixed(6)}</div>
-                                <div className="safe-sub">Vol 1h {alert.vol1.toFixed(0)}</div>
-                              </td>
-                              <td>
-                                <div className="safe-score">{alert.pch5.toFixed(2)}%</div>
-                                <div className="safe-sub">Vol 5m {alert.vol5.toFixed(0)}</div>
-                              </td>
-                              <td>
-                                <div className="safe-score">${alert.liq.toFixed(0)}</div>
-                                <div className="safe-sub">{alert.tokenAddress.slice(0, 10)}...</div>
-                              </td>
-                              <td>
-                                <div className="safe-reason">{alert.reasons.join(', ')}</div>
-                                <a className="safe-link" href={alert.url} target="_blank" rel="noreferrer">
-                                  Buka DexScreener
-                                </a>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-
-                      <div className="safe-pagination">
-                        <button
-                          className="safe-page-btn"
-                          onClick={() => setSafePage((p) => Math.max(1, p - 1))}
-                          disabled={safePage === 1}
-                        >
-                          &larr; Sebelumnya
-                        </button>
-                        <div className="safe-page-indicator">
-                          Halaman {safePage} / {totalSafePages}
-                        </div>
-                        <button
-                          className="safe-page-btn"
-                          onClick={() => setSafePage((p) => Math.min(totalSafePages, p + 1))}
-                          disabled={safePage === totalSafePages}
-                        >
-                          Selanjutnya &rarr;
-                        </button>
+                    <div className="pump-math-metrics">
+                      <div>
+                        <div className="metric-label">Upside → TP</div>
+                        <div className="metric-value">{item.upsidePct.toFixed(1)}%</div>
+                        <div className="metric-sub">Distance from last price to TP</div>
+                      </div>
+                      <div>
+                        <div className="metric-label">Cushion → SL</div>
+                        <div className="metric-value">{item.downsidePct.toFixed(1)}%</div>
+                        <div className="metric-sub">Drop allowed before hitting SL</div>
+                      </div>
+                      <div>
+                        <div className="metric-label">RR live</div>
+                        <div className="metric-value">{item.rrLive.toFixed(2)}x</div>
+                        <div className="metric-sub">Comparing current upside vs downside</div>
+                      </div>
+                      <div>
+                        <div className="metric-label">Gap ke Entry</div>
+                        <div className="metric-value">{item.entryGapPct.toFixed(1)}%</div>
+                        <div className="metric-sub">Negative = still discounted</div>
+                      </div>
+                      <div>
+                        <div className="metric-label">Heat 24j</div>
+                        <div className="metric-value">{item.heatPct.toFixed(1)}%</div>
+                        <div className="metric-sub">Position within low-high range</div>
+                      </div>
+                      <div>
+                        <div className="metric-label">Momentum</div>
+                        <div className="metric-value">{item.momentumPct.toFixed(1)}%</div>
+                        <div className="metric-sub">Gain from 24h low</div>
                       </div>
                     </div>
+
+                    <div className="pump-math-diagnosis">
+                      <div>
+                        <div className="diag-label">Conviction</div>
+                        <div className={`diag-value ${item.convictionLabel === 'A' ? 'grade-a-text' : ''}`}>
+                          {item.convictionLabel}
+                        </div>
+                        <div className="diag-sub">{item.convictionNote}</div>
+                      </div>
+                      <div>
+                        <div className="diag-label">Liquidity</div>
+                        <div className="diag-value">{item.liquidityLabel}</div>
+                        <div className="diag-sub">Volume {formatter.format(item.coin.volIdr)} IDR</div>
+                      </div>
+                      <div>
+                        <div className="diag-label">Safeguard</div>
+                        <div className="diag-value">{item.riskNote}</div>
+                        <div className="diag-sub">Keep SL ready and avoid FOMO</div>
+                      </div>
+                    </div>
+
+                    <div className="pump-math-history">
+                      <div className="history-block">
+                        <div className="history-label">Sideways & history</div>
+                        <div className="history-value">{item.sidewayLabel}</div>
+                        <div className="history-sub">{item.sidewayNote}</div>
+                      </div>
+                      <div className="history-block">
+                        <div className="history-label">Break & midline</div>
+                        <div className="history-value">{item.structureNote}</div>
+                        <div className="history-sub">{item.historyNote}</div>
+                      </div>
+                      <div className="history-block">
+                        <div className="history-label">BTC effect</div>
+                        <div className="history-value">{item.btcDrag}</div>
+                        <div className="history-sub">Confidence {item.confidencePct}%</div>
+                      </div>
+                    </div>
+
+                    <div className="pump-math-spark">
+                      <div className="spark-label">Mini chart: live upside vs downside</div>
+                      <div className="spark-track">
+                        <div className="spark-bar">
+                          <span
+                            className="spark-up"
+                            style={{ width: `${Math.min(100, Math.max(0, item.upsidePct))}%` }}
+                          />
+                        </div>
+                        <div className="spark-bar">
+                          <span
+                            className="spark-down"
+                            style={{ width: `${Math.min(100, Math.max(0, item.downsidePct * 2))}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div className="spark-meta">
+                        Upside {item.upsidePct.toFixed(1)}% • Downside {item.downsidePct.toFixed(1)}% • Heat {item.heatPct.toFixed(
+                          1
+                        )}% • Momentum {item.momentumPct.toFixed(1)}%
+                      </div>
+                    </div>
+
+                    <div className="pump-math-action">{item.actionLine}</div>
                   </div>
-                )}
-              </>
+                ))}
+              </div>
             )}
           </section>
 
+          <section id="grade-a" className="section-card accent-math">
+            <div className="section-head">
+              <div>
+                <h3>Koin Grade A &lt; 1000 IDR</h3>
+                <p className="muted">
+                  Fokus koin harga murah dengan grade A. Sorot warna untuk status <span className="indo-pill label">penting</span> dalam bahasa Indo.
+                </p>
+              </div>
+              <span className="badge badge-strong">Filter murah</span>
+            </div>
+
+            {gradeACheapList.length === 0 ? (
+              <div className="empty-state small">Belum ada koin grade A di bawah 1000 IDR.</div>
+            ) : (
+              <ul className="side-list">
+                {gradeACheapList.map((item) => (
+                  <li key={item.pair} className="side-list-item">
+                    <div className="side-list-title">
+                      <span className="grade-a-text">{item.pair.toUpperCase()}</span>
+                      <span className="badge badge-buy">Grade A</span>
+                    </div>
+                    <div className="side-list-sub">Last {formatPrice(item.last)} IDR • Entry {formatPrice(item.entry)} • TP {formatPrice(item.tp)}</div>
+                    <div className="side-list-sub">RR live {item.rr.toFixed(2)} • Momentum {item.momentum.toFixed(1)}%</div>
+                    <div className="side-list-sub">
+                      <span className={`indo-pill ${item.isPumped ? 'hot' : 'calm'}`}>
+                        {item.status}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
 
           <section id="radar" className="side-section section-card accent-radar">
-            <h3>Radar Peringatan Pump</h3>
+            <h3>Pump Alert Radar</h3>
             {warnings.length === 0 ? (
-              <p className="muted">Belum ada peringatan baru. Periksa secara berkala agar tidak ketinggalan momentum.</p>
+              <p className="muted">No new alerts yet. Check regularly so you do not miss momentum.</p>
             ) : (
               <ul className="side-list">
                 {warnings.map((warn) => (
@@ -2515,10 +1976,10 @@ export default function HomePage() {
                       {warn.note}
                     </div>
                     <div className="side-list-sub muted">
-                      {formatRelativeTime(warn.time)} • Naik dari low 24j ~{warn.moveFromLowPct.toFixed(1)}% • Volume {formatter.format(warn.volIdr)} IDR
+                      {formatRelativeTime(warn.time)} • Up from 24h low ~{warn.moveFromLowPct.toFixed(1)}% • Volume {formatter.format(warn.volIdr)} IDR
                     </div>
                     <div className="side-list-sub muted">
-                      Harga {formatPrice(warn.last)} | Entry {formatPrice(warn.entry)} | TP {formatPrice(warn.tp)} | SL {formatPrice(warn.sl)} | RR {warn.rr.toFixed(1)}
+                      Price {formatPrice(warn.last)} | Entry {formatPrice(warn.entry)} | TP {formatPrice(warn.tp)} | SL {formatPrice(warn.sl)} | RR {warn.rr.toFixed(1)}
                     </div>
                   </li>
                 ))}
@@ -2527,16 +1988,16 @@ export default function HomePage() {
           </section>
 
           <section id="news" className="side-section section-card accent-news">
-            <h3>Berita & Sentimen Terbaru</h3>
+            <h3>Latest News & Sentiment</h3>
             {newsError && <div className="error-box">{newsError}</div>}
             <div className="news-bias">
               <span className={`bias-pill bias-${newsInsight.biasLabel.toLowerCase()}`}>
-                Intinya: {newsInsight.biasLabel}
+                Summary: {newsInsight.biasLabel}
               </span>
               <div className="news-bias-detail">{newsInsight.biasDetail}</div>
             </div>
             {news.length === 0 ? (
-              <p className="muted">Belum ada berita yang bisa ditampilkan.</p>
+              <p className="muted">No news to display yet.</p>
             ) : (
               <ul className="side-list">
                 {news.map((item) => (
@@ -2557,7 +2018,7 @@ export default function HomePage() {
                     </div>
                     <div className="side-list-sub">{item.summary}</div>
                     <div className="side-list-sub muted">
-                      {item.source} • Dampak {item.impact} • Aset: {item.assets.join(', ')}
+                      {item.source} • Impact {item.impact} • Assets: {item.assets.join(', ')}
                     </div>
                   </li>
                 ))}
@@ -2566,9 +2027,9 @@ export default function HomePage() {
           </section>
 
           <section id="predictions" className="side-section section-card accent-predictions">
-            <h3>Prediksi Crypto & Coin 1 Minggu Ke Depan</h3>
+            <h3>Crypto & Coin Predictions for the Next Week</h3>
             {predictions.length === 0 ? (
-              <p className="muted">Prediksi mingguan muncul setelah data koin dan berita termuat.</p>
+              <p className="muted">Weekly predictions will appear after coin and news data load.</p>
             ) : (
               <ul className="side-list">
                 {predictions.map((pred) => (
@@ -2587,9 +2048,9 @@ export default function HomePage() {
                         {pred.direction.toUpperCase()}
                       </span>
                     </div>
-                    <div className="side-list-sub">Kepercayaan {pred.confidence}% • Horison {pred.horizon}</div>
+                    <div className="side-list-sub">Confidence {pred.confidence}% • Horizon {pred.horizon}</div>
                     <div className="side-list-sub">{pred.rationale}</div>
-                    <div className="side-list-sub muted">Saran: {pred.suggestedAction}</div>
+                    <div className="side-list-sub muted">Advice: {pred.suggestedAction}</div>
                   </li>
                 ))}
               </ul>
@@ -2597,10 +2058,10 @@ export default function HomePage() {
           </section>
 
           <section id="pump-list" className="side-section section-card accent-pump">
-            <h3>Daftar koin mau pump</h3>
-            <p className="muted">Klik koin untuk menampilkan detail, chart, dan TP 1/2/3 di bawah.</p>
+            <h3>About-to-Pump Coin List</h3>
+            <p className="muted">Click a coin to show details, charts, and TP 1/2/3 below.</p>
             {pumpList.length === 0 ? (
-              <p className="muted">Belum ada koin yang terdeteksi mau pump.</p>
+              <p className="muted">No coins detected as about to pump yet.</p>
             ) : (
               <ul className="side-list">
                 {pumpList.map((c) => (
@@ -2611,9 +2072,9 @@ export default function HomePage() {
                   >
                     <div className="side-list-title">
                       <span>{c.pair.toUpperCase()}</span>
-                      <span className="badge badge-pump">Mau pump</span>
+                      <span className="badge badge-pump">About to pump</span>
                     </div>
-                    <div className="side-list-sub">Naik dari low 24j ~{c.moveFromLowPct.toFixed(1)}%</div>
+                    <div className="side-list-sub">Up from 24h low ~{c.moveFromLowPct.toFixed(1)}%</div>
                   </li>
                 ))}
               </ul>
@@ -2626,7 +2087,7 @@ export default function HomePage() {
                 <>
                   <PairChart coin={selected} />
                   <div className="reasons-box">
-                    <h3>Alasan Sinyal</h3>
+                    <h3>Signal Reasons</h3>
                     <ul>
                       {selected.reasons.map((reason, idx) => (
                         <li key={idx}>{reason}</li>
@@ -2648,15 +2109,15 @@ export default function HomePage() {
               ) : (
                 <div className="empty-state">
                   {loading
-                    ? 'Mengambil data koin...'
-                    : 'Klik salah satu koin mau pump di atas untuk melihat detail.'}
+                    ? 'Fetching coin data...'
+                    : 'Click one of the about-to-pump coins above to see details.'}
                 </div>
               )}
             </div>
           </section>
 
           <section id="table" className="table-section section-card accent-detail">
-            <h2>Daftar koin mau pump</h2>
+            <h2>About-to-pump coins</h2>
             <CoinTable
               coins={pumpList}
               selectedPair={selected?.pair ?? null}
@@ -2667,17 +2128,16 @@ export default function HomePage() {
           <section id="pump-charts" className="section-card accent-chart pump-chart-section">
             <div className="pump-chart-head">
               <div>
-                <h3>Grafik Indodax untuk 2 top pick pump</h3>
+                <h3>Indodax charts for the top 2 pump picks</h3>
                 <p className="muted">
-                  Chart langsung dari Indodax + analisis super lengkap (bias, horizon, support/resist, momentum, aksi) agar
-                  eksekusi dua koin pump teratas lebih pasti dan akurat.
+                  Live charts from Indodax plus full analysis (bias, horizon, support/resistance, momentum, actions) to execute the top pump coins with more confidence.
                 </p>
               </div>
               <span className="badge badge-pump">Live</span>
             </div>
 
             {pumpChartPicks.length === 0 ? (
-              <div className="empty-state small">Belum ada top pick untuk dianalisis grafiknya.</div>
+              <div className="empty-state small">No top picks to analyze on charts yet.</div>
             ) : (
               <div className="pump-chart-grid">
                 {pumpChartPicks.map((item) => (
@@ -2691,7 +2151,7 @@ export default function HomePage() {
                     <IndodaxChart pair={item.coin.pair} />
 
                     <div className="chart-analysis">
-                      <div className="chart-analysis-title">Analisis lengkap</div>
+                      <div className="chart-analysis-title">Full analysis</div>
                       <ul>
                         {item.detailPoints.map((detail, idx) => (
                           <li key={idx}>{detail}</li>
@@ -2789,7 +2249,7 @@ export default function HomePage() {
       </div>
 
       <footer className="page-footer">
-        Dashboard versi {lastUpdatedLabel} WIB — perbaikan terbaru analisis pump, historis sideway, efek BTC, dan grafik mini.
+        Dashboard version {lastUpdatedLabel} WIB — latest updates to pump analysis, sideways history, BTC effect, and mini charts.
       </footer>
     </main>
   );

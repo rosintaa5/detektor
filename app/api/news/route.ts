@@ -10,7 +10,7 @@ export async function GET() {
   } catch (err) {
     console.error('Error /api/news', err);
     return NextResponse.json(
-      { error: 'Terjadi kesalahan saat mengambil berita.' },
+      { error: 'An error occurred while fetching news.' },
       { status: 500 }
     );
   }

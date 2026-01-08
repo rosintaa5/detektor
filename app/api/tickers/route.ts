@@ -16,7 +16,7 @@ export async function GET() {
       const text = await res.text();
       console.error('Indodax /api/tickers error', res.status, text);
       return NextResponse.json(
-        { error: 'Gagal mengambil data dari Indodax.' },
+        { error: 'Failed to fetch data from Indodax.' },
         { status: 502 }
       );
     }
@@ -29,7 +29,7 @@ export async function GET() {
   } catch (err) {
     console.error('Error /api/tickers', err);
     return NextResponse.json(
-      { error: 'Terjadi kesalahan saat mengambil data.' },
+      { error: 'An error occurred while fetching data.' },
       { status: 500 }
     );
   }

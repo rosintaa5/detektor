@@ -8,7 +8,7 @@ interface Props {
   onSelectCoin: (coin: CoinSignal) => void;
 }
 
-const formatter = new Intl.NumberFormat('id-ID', {
+const formatter = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 2,
 });
 
@@ -23,7 +23,7 @@ export default function CoinTable({ coins, selectedPair, onSelectCoin }: Props) 
   if (coins.length === 0) {
     return (
       <p className="muted">
-        Belum ada koin yang memenuhi kriteria mau pump saat ini.
+        No coins meet the “about to pump” criteria right now.
       </p>
     );
   }
@@ -34,8 +34,8 @@ export default function CoinTable({ coins, selectedPair, onSelectCoin }: Props) 
         <thead>
           <tr>
             <th>Pair</th>
-            <th>Sinyal</th>
-            <th>Fase</th>
+            <th>Signal</th>
+            <th>Phase</th>
             <th>Status</th>
             <th>Last</th>
             <th>Entry</th>
@@ -52,14 +52,14 @@ export default function CoinTable({ coins, selectedPair, onSelectCoin }: Props) 
             const isSelected = selectedPair === coin.pair;
             const phaseLabel =
               coin.pricePhase === 'baru_mau_naik'
-                ? 'Baru mau naik'
+                ? 'Just starting to rise'
                 : coin.pricePhase === 'sudah_telanjur_naik'
-                ? 'Sudah telanjur naik'
+                ? 'Already ran up'
                 : 'Normal';
 
             let statusLabel = '';
             if (coin.pumpStatus === 'mau_pump') {
-              statusLabel = 'Mau pump';
+              statusLabel = 'About to pump';
             }
 
             return (
