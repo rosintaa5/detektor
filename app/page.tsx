@@ -141,6 +141,7 @@ interface PumpOrderSignal {
   tradeHint: string;
   label: string;
   reason: string;
+  wallNote: string;
 }
 
 interface SummariesResponse {
