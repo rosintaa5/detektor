@@ -137,6 +137,19 @@ interface PumpOrderSignal {
   reason: string;
 }
 
+interface SummariesResponse {
+  tickers?: Record<
+    string,
+    {
+      last?: string | number;
+      high?: string | number;
+      low?: string | number;
+      vol_idr?: string | number;
+      vol_id?: string | number;
+    }
+  >;
+}
+
 interface TopPick {
   pair: string;
   asset: string;
@@ -180,6 +193,8 @@ export default function HomePage() {
   const [orderSignals, setOrderSignals] = useState<PumpOrderSignal[]>([]);
   const [orderLoading, setOrderLoading] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
+  const [orderLastUpdate, setOrderLastUpdate] = useState<number | null>(null);
+  const [orderCooldownUntil, setOrderCooldownUntil] = useState<number | null>(null);
   const lastLiqRef = useRef<Map<string, number>>(new Map());
   const lastSafeTelegramRef = useRef<string | null>(null);
   const safeStateRef = useRef<
@@ -1308,117 +1323,120 @@ export default function HomePage() {
 
   const toPairId = useCallback((pair: string) => pair.replace('_', ''), []);
 
-  useEffect(() => {
-    if (!isAuthorized) return undefined;
-    if (pumpMathList.length === 0) {
-      setOrderSignals([]);
-      setOrderError(null);
-      return undefined;
+  const handleOrderScan = useCallback(async () => {
+    const now = Date.now();
+    if (orderCooldownUntil && now < orderCooldownUntil) {
+      return;
     }
 
-    let isActive = true;
-    const controller = new AbortController();
+    try {
+      setOrderLoading(true);
+      setOrderError(null);
+      setOrderCooldownUntil(now + 45 * 1000);
 
-    const run = async () => {
-      try {
-        setOrderLoading(true);
-        setOrderError(null);
-        const targets = pumpMathList.slice(0, 8);
-        const results = await Promise.allSettled(
-          targets.map(async (item) => {
-            const pairId = toPairId(item.coin.pair);
-            const [depthRes, tradesRes] = await Promise.all([
-              fetch(`/api/indodax/depth/${pairId}`, { signal: controller.signal }),
-              fetch(`/api/indodax/trades/${pairId}`, { signal: controller.signal }),
-            ]);
-
-            if (!depthRes.ok || !tradesRes.ok) {
-              throw new Error(`Order data gagal ${item.coin.pair}`);
-            }
-
-            const depthData = (await depthRes.json()) as DepthBookResponse;
-            const tradesData = (await tradesRes.json()) as TradeItem[];
-
-            const last = item.coin.last;
-            const buyLevels = (depthData.buy ?? []).map(([price, amount]) => ({
-              price: Number(price),
-              amount: Number(amount),
-            }));
-            const sellLevels = (depthData.sell ?? []).map(([price, amount]) => ({
-              price: Number(price),
-              amount: Number(amount),
-            }));
-
-            const buyBand = buyLevels.filter((lvl) => lvl.price >= last * 0.97 && lvl.price <= last);
-            const sellBand = sellLevels.filter((lvl) => lvl.price <= last * 1.03 && lvl.price >= last);
-            const buyValue = buyBand.reduce((sum, lvl) => sum + lvl.price * lvl.amount, 0);
-            const sellValue = sellBand.reduce((sum, lvl) => sum + lvl.price * lvl.amount, 0);
-            const ratio = sellValue > 0 ? buyValue / sellValue : buyValue > 0 ? 5 : 1;
-
-            const bestBid = buyLevels.length > 0 ? Math.max(...buyLevels.map((lvl) => lvl.price)) : last;
-            const bestAsk = sellLevels.length > 0 ? Math.min(...sellLevels.map((lvl) => lvl.price)) : last;
-            const mid = (bestBid + bestAsk) / 2;
-            const spreadPct = mid > 0 ? ((bestAsk - bestBid) / mid) * 100 : 0;
-
-            const trades = tradesData.slice(0, 200);
-            const buyTrades = trades.filter((t) => t.type === 'buy');
-            const sellTrades = trades.filter((t) => t.type === 'sell');
-            const buyCount = buyTrades.length;
-            const sellCount = sellTrades.length;
-            const buyVol = buyTrades.reduce((sum, t) => sum + Number(t.amount), 0);
-            const sellVol = sellTrades.reduce((sum, t) => sum + Number(t.amount), 0);
-            const buyRatioTrades = buyCount + sellCount > 0 ? buyCount / (buyCount + sellCount) : 0;
-            const buyRatioVolume = buyVol + sellVol > 0 ? buyVol / (buyVol + sellVol) : 0;
-
-            const wallBuy = buyLevels.reduce((best, lvl) => (lvl.amount > best.amount ? lvl : best), buyLevels[0] ?? { amount: 0, price: last });
-            const wallSell = sellLevels.reduce((best, lvl) => (lvl.amount > best.amount ? lvl : best), sellLevels[0] ?? { amount: 0, price: last });
-            const wallNote = wallBuy.amount >= wallSell.amount ? `Buy wall ${formatPrice(wallBuy.price)}` : `Sell wall ${formatPrice(wallSell.price)}`;
-
-            const volumeScore = Math.min(30, Math.max(0, Math.log10(Math.max(item.coin.volIdr, 1)) * 8 - 20));
-            const depthScore = Math.min(30, Math.max(0, (ratio - 1) * 15));
-            const flowScore = Math.min(30, Math.max(0, (buyRatioVolume - 0.5) * 60));
-            const score = Math.round(Math.min(100, volumeScore + depthScore + flowScore));
-
-            const action = ratio >= 1.8 && buyRatioVolume >= 0.6 ? 'Buy pressure kuat' : ratio >= 1.2 ? 'Mulai dominan buy' : 'Seimbang';
-            const reason = `Ratio ${ratio.toFixed(2)} • Buy flow ${(buyRatioVolume * 100).toFixed(0)}% • Spread ${spreadPct.toFixed(2)}%`;
-
-            return {
-              pair: item.coin.pair,
-              last,
-              score,
-              buySellRatio: ratio,
-              buyRatioTrades,
-              buyRatioVolume,
-              spreadPct,
-              wallNote,
-              action,
-              reason,
-            } as PumpOrderSignal;
-          })
-        );
-
-        if (!isActive) return;
-
-        const signals = results
-          .flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []))
-          .sort((a, b) => b.score - a.score);
-        setOrderSignals(signals);
-      } catch (err) {
-        if (!isActive) return;
-        if ((err as Error).name === 'AbortError') return;
-        console.error(err);
-        setOrderError('Gagal mengambil data order Indodax.');
-      } finally {
-        if (isActive) setOrderLoading(false);
+      const summariesRes = await fetch('/api/indodax/summaries');
+      if (!summariesRes.ok) {
+        throw new Error(`Summaries gagal ${summariesRes.status}`);
       }
-    };
+      const summaries = (await summariesRes.json()) as SummariesResponse;
+      const tickers = summaries.tickers ?? {};
+      const topPairs = Object.entries(tickers)
+        .map(([pair, info]) => ({
+          pair,
+          volIdr: Number(info.vol_idr ?? info.vol_id ?? 0) || 0,
+          last: Number(info.last ?? 0) || 0,
+          high: Number(info.high ?? 0) || 0,
+          low: Number(info.low ?? 0) || 0,
+        }))
+        .filter((item) => item.last > 0 && item.volIdr > 0)
+        .sort((a, b) => b.volIdr - a.volIdr)
+        .slice(0, 10);
 
-    run();
-    return () => {
-      isActive = false;
-      controller.abort();
-    };
-  }, [formatPrice, isAuthorized, pumpMathList, toPairId]);
+      const results = await Promise.allSettled(
+        topPairs.map(async (item) => {
+          const pairId = toPairId(item.pair);
+          const [depthRes, tradesRes] = await Promise.all([
+            fetch(`/api/indodax/depth/${pairId}`),
+            fetch(`/api/indodax/trades/${pairId}`),
+          ]);
+
+          if (!depthRes.ok || !tradesRes.ok) {
+            throw new Error(`Order data gagal ${item.pair}`);
+          }
+
+          const depthData = (await depthRes.json()) as DepthBookResponse;
+          const tradesData = (await tradesRes.json()) as TradeItem[];
+
+          const last = item.last;
+          const buyLevels = (depthData.buy ?? []).map(([price, amount]) => ({
+            price: Number(price),
+            amount: Number(amount),
+          }));
+          const sellLevels = (depthData.sell ?? []).map(([price, amount]) => ({
+            price: Number(price),
+            amount: Number(amount),
+          }));
+
+          const buyBand = buyLevels.filter((lvl) => lvl.price >= last * 0.97 && lvl.price <= last);
+          const sellBand = sellLevels.filter((lvl) => lvl.price <= last * 1.03 && lvl.price >= last);
+          const buyValue = buyBand.reduce((sum, lvl) => sum + lvl.price * lvl.amount, 0);
+          const sellValue = sellBand.reduce((sum, lvl) => sum + lvl.price * lvl.amount, 0);
+          const ratio = sellValue > 0 ? buyValue / sellValue : buyValue > 0 ? 5 : 1;
+
+          const bestBid = buyLevels.length > 0 ? Math.max(...buyLevels.map((lvl) => lvl.price)) : last;
+          const bestAsk = sellLevels.length > 0 ? Math.min(...sellLevels.map((lvl) => lvl.price)) : last;
+          const mid = (bestBid + bestAsk) / 2;
+          const spreadPct = mid > 0 ? ((bestAsk - bestBid) / mid) * 100 : 0;
+
+          const trades = tradesData.slice(0, 200);
+          const buyTrades = trades.filter((t) => t.type === 'buy');
+          const sellTrades = trades.filter((t) => t.type === 'sell');
+          const buyCount = buyTrades.length;
+          const sellCount = sellTrades.length;
+          const buyVol = buyTrades.reduce((sum, t) => sum + Number(t.amount), 0);
+          const sellVol = sellTrades.reduce((sum, t) => sum + Number(t.amount), 0);
+          const buyRatioTrades = buyCount + sellCount > 0 ? buyCount / (buyCount + sellCount) : 0;
+          const buyRatioVolume = buyVol + sellVol > 0 ? buyVol / (buyVol + sellVol) : 0;
+
+          const wallBuy = buyLevels.reduce((best, lvl) => (lvl.amount > best.amount ? lvl : best), buyLevels[0] ?? { amount: 0, price: last });
+          const wallSell = sellLevels.reduce((best, lvl) => (lvl.amount > best.amount ? lvl : best), sellLevels[0] ?? { amount: 0, price: last });
+          const wallNote = wallBuy.amount >= wallSell.amount ? `Buy wall ${formatPrice(wallBuy.price)}` : `Sell wall ${formatPrice(wallSell.price)}`;
+
+          const volumeScore = Math.min(30, Math.max(0, Math.log10(Math.max(item.volIdr, 1)) * 8 - 20));
+          const depthScore = Math.min(30, Math.max(0, (ratio - 1) * 15));
+          const flowScore = Math.min(30, Math.max(0, (buyRatioVolume - 0.5) * 60));
+          const score = Math.round(Math.min(100, volumeScore + depthScore + flowScore));
+
+          const action = ratio >= 1.8 && buyRatioVolume >= 0.6 ? 'Buy pressure kuat' : ratio >= 1.2 ? 'Mulai dominan buy' : 'Seimbang';
+          const reason = `Ratio ${ratio.toFixed(2)} • Buy flow ${(buyRatioVolume * 100).toFixed(0)}% • Spread ${spreadPct.toFixed(2)}%`;
+
+          return {
+            pair: item.pair,
+            last,
+            score,
+            buySellRatio: ratio,
+            buyRatioTrades,
+            buyRatioVolume,
+            spreadPct,
+            wallNote,
+            action,
+            reason,
+          } as PumpOrderSignal;
+        })
+      );
+
+      const signals = results
+        .flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []))
+        .sort((a, b) => b.score - a.score);
+      setOrderSignals(signals);
+      setOrderLastUpdate(now);
+    } catch (err) {
+      console.error(err);
+      setOrderError('Gagal mengambil data order Indodax.');
+    } finally {
+      setOrderLoading(false);
+    }
+  }, [formatPrice, orderCooldownUntil, toPairId]);
 
   const topPickInsight = useMemo(() => {
     if (topPicks.length === 0) {
@@ -2139,7 +2157,17 @@ export default function HomePage() {
                   Deteksi awal berdasarkan volume, orderbook, dan aliran trades (buy/sell) untuk melihat tekanan beli sebelum pump.
                 </p>
               </div>
-              <span className="badge badge-neutral">Orderbook & Trades</span>
+              <div className="section-actions">
+                <button
+                  className="refresh-btn"
+                  type="button"
+                  onClick={handleOrderScan}
+                  disabled={orderLoading || (orderCooldownUntil ? Date.now() < orderCooldownUntil : false)}
+                >
+                  Prediksi Koin Potensi Pump
+                </button>
+                <span className="badge badge-neutral">Orderbook & Trades</span>
+              </div>
             </div>
 
             {orderLoading ? (
@@ -2150,6 +2178,9 @@ export default function HomePage() {
               <div className="empty-state small">Belum ada kandidat order pump yang kuat.</div>
             ) : (
               <div className="pump-system-table-wrap">
+                {orderLastUpdate && (
+                  <div className="safe-sub">Update terakhir: {new Date(orderLastUpdate).toLocaleTimeString('id-ID')}</div>
+                )}
                 <table className="pump-system-table">
                   <thead>
                     <tr>
