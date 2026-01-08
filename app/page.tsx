@@ -122,6 +122,7 @@ interface TradeItem {
   price: string | number;
   amount: string | number;
   type: 'buy' | 'sell';
+  date?: string | number;
 }
 
 interface PumpOrderSignal {
